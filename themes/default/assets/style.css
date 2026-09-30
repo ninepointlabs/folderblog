@@ -48,7 +48,8 @@ h2 { font-size: 1.4rem; margin: 2.2rem 0 .6rem; }
 h3 { font-size: 1.15rem; margin: 1.8rem 0 .5rem; }
 p, ul, ol, blockquote, pre, table, figure { margin: 0 0 1.2rem; }
 .content { overflow-wrap: break-word; }
-.content img, .content video { max-width: 100%; height: auto; display: block; margin: 1.5rem auto; }
+.content img, .content video { max-width: 100%; height: auto; vertical-align: middle; }
+.content p > img:only-child, .content figure img, .content video { display: block; margin: 1.5rem auto; }
 blockquote { margin-left: 0; padding-left: 1.2rem; border-left: 3px solid var(--rule); color: var(--muted); font-style: italic; }
 hr { border: 0; border-top: 1px solid var(--rule); margin: 2.5rem 0; }
 code, pre { font-family: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, Consolas, monospace; font-size: .82em; }

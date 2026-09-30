@@ -9,6 +9,6 @@ fn main() {
     let light = css_for_theme_with_class_style(&ts.themes["InspiredGitHub"], style).unwrap();
     let dark = css_for_theme_with_class_style(&ts.themes["base16-ocean.dark"], style).unwrap();
     println!("/* Syntax highlighting: classes emitted by folderblog (hl-*). Generated from syntect themes. */");
-    println!("{light}");
+    println!("@media (prefers-color-scheme: light) {{\n{light}\n}}");
     println!("@media (prefers-color-scheme: dark) {{\n{dark}\n}}");
 }

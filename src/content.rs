@@ -325,7 +325,9 @@ pub fn resolve_date(
         return Ok(None);
     }
     if src.draft {
-        return Ok(Some((Local::now().fixed_offset(), DateSource::FirstSeen)));
+        let now = Local::now().fixed_offset();
+        let now = DateTime::parse_from_rfc3339(&now.to_rfc3339_opts(chrono::SecondsFormat::Secs, false)).unwrap();
+        return Ok(Some((now, DateSource::FirstSeen)));
     }
     Ok(Some((state.first_seen(slug), DateSource::FirstSeen)))
 }
