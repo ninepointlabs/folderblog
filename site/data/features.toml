@@ -1,0 +1,39 @@
+[[f]]
+icon = "✍️"
+title = "Just write"
+text = "Plain Markdown. No front matter: the title comes from your first heading, the address from the file name, the date from when folderblog first saw it."
+
+[[f]]
+icon = "⚡"
+title = "Live in seconds"
+text = "A background service watches your folder, debounces bursts of saves, ignores editor temp files, and publishes when something changes."
+
+[[f]]
+icon = "🐙"
+title = "GitHub Pages, zero clicks"
+text = "Log in once. After that, a new blog creates its own repository and turns on Pages at the first publish."
+
+[[f]]
+icon = "🛡️"
+title = "Never half-broken"
+text = "Every build happens in a fresh folder and replaces the live site only if everything rendered. A broken template changes nothing."
+
+[[f]]
+icon = "🔔"
+title = "Tells you when it fails"
+text = "A desktop notification with the file and line, `folderblog status`, and the journal. Expired logins too: pending posts publish once you log back in."
+
+[[f]]
+icon = "📁"
+title = "Many blogs, one folder"
+text = "Every folder in ~/Blogs is its own blog, with its own theme, settings and host. One breaking never touches the others."
+
+[[f]]
+icon = "🎨"
+title = "Themes with no limits"
+text = "Jinja templates that own every byte: any layout, JSON search indexes, templated CSS, SVG, a page per tag or year or series."
+
+[[f]]
+icon = "🤖"
+title = "Made for coding agents"
+text = "Every blog ships an AGENTS.md contract, plus preview, check, data and stress fixtures, so an agent can design and verify on its own."

@@ -1,0 +1,19 @@
+{% extends "_layouts/base.html" %}
+{% block title %}Blog · folderblog{% endblock %}
+{% block main %}
+<main class="doc wrap-narrow">
+  <p class="kicker">News and notes</p>
+  <h1>Blog</h1>
+  {% for p in posts %}
+  <article class="entry">
+    <time datetime="{{ p.date }}">{{ p.date | date("%B %-d, %Y") }}</time>
+    <h2><a href="{{ p.url }}">{{ p.title }}</a></h2>
+    <div class="prose">{{ p.excerpt }}</div>
+    <a class="more" href="{{ p.url }}">Read more →</a>
+  </article>
+  {% else %}
+  <p>Nothing yet.</p>
+  {% endfor %}
+  <p class="rss"><a href="{{ site.feed_url }}">Subscribe with RSS</a></p>
+</main>
+{% endblock %}

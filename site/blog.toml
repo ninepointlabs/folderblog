@@ -1,0 +1,16 @@
+# The folderblog website is itself a folderblog blog. It is built and deployed to
+# GitHub Pages by .github/workflows/site.yml on every push to main.
+title = "folderblog"
+base_url = "https://folderblog.ninepointlabs.com"
+description = "A folder is a blog. Save a Markdown file and it's live seconds later: no front matter, no build step, no deploy command."
+author = "Nine Point Labs"
+language = "en"
+permalink = "/blog/{year}/{slug}/"
+
+[feed]
+limit = 20
+
+[params]
+repo = "https://github.com/ninepointlabs/folderblog"
+version = "0.1.0"
+releases = "https://github.com/ninepointlabs/folderblog/releases/latest"

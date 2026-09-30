@@ -1,0 +1,202 @@
+{% extends "_layouts/base.html" %}
+{% block bodyclass %}home{% endblock %}
+{% block main %}
+<main>
+
+<section class="hero wrap">
+  <div class="hero-copy">
+    <p class="kicker">folderblog {{ params.version }} · free &amp; open source</p>
+    <h1>A folder<br>is a <span class="hl">blog.</span></h1>
+    <p class="lede">Write a Markdown file. Save it into a folder. A few seconds later it's live on your site. No front matter, no build step, no deploy command. Nothing to remember, so nothing to forget.</p>
+    <div class="ctas">
+      <a class="btn" href="#install">Install</a>
+      <a class="btn ghost" href="#tour">▶ Watch the 3-minute tour</a>
+    </div>
+    <p class="fine">Linux · GitHub Pages or any host · themes designed by you, or your coding agent</p>
+  </div>
+
+  <div class="toy" id="toy" aria-label="Try it: write a post and save it">
+    <div class="toy-ed">
+      <div class="bar"><i></i><i></i><i></i>
+        <span class="path">~/Blogs/myblog/posts/<input id="toy-file" value="hello-from-a-folder.md" spellcheck="false" aria-label="File name"></span>
+      </div>
+      <textarea id="toy-text" spellcheck="false" aria-label="Post text"># Hello from a folder
+
+I typed this and pressed save. That was the whole publishing process.
+
+Try it: change the heading, the file name, or the text, then press **Save**.</textarea>
+      <div class="toy-actions">
+        <button class="btn small" id="toy-save">Save <kbd>Ctrl</kbd><kbd>S</kbd></button>
+        <span class="toy-hint" id="toy-hint">edit anything, then save</span>
+      </div>
+      <pre class="toy-log" id="toy-log"><span class="d">[folderblog]</span> watching ~/Blogs</pre>
+    </div>
+    <div class="toy-site" id="toy-site">
+      <div class="bar"><i></i><i></i><i></i><span class="url" id="toy-url">yourname.github.io/myblog/</span><span class="timer" id="toy-timer"></span></div>
+      <div class="toy-page" id="toy-page">
+        <div class="toy-sitename">My Blog</div>
+        <p class="toy-empty">Nothing published yet. Press <b>Save</b>.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="tour" id="tour">
+  <div class="wrap">
+    <p class="kicker center">The tour</p>
+    <h2 class="center">Everything in three and a half minutes</h2>
+    <div class="video">
+      <video controls preload="metadata" playsinline poster="{{ '/media/poster.jpg' | url }}">
+        <source src="{{ '/media/folderblog-explainer.mp4' | url }}" type="video/mp4">
+        Your browser can't play this video. <a href="{{ '/media/folderblog-explainer.mp4' | url }}">Download it</a>.
+      </video>
+    </div>
+    <p class="center fine">Narrated, captioned, and every site in it is real.</p>
+  </div>
+</section>
+
+<section class="how wrap" id="how">
+  <p class="kicker">How it works</p>
+  <h2>Write. Save. That's publishing.</h2>
+  <ol class="steps">
+    <li><span class="n">1</span><h3>Write</h3><p>Any editor, plain Markdown, saved into <code>~/Blogs/myblog/posts/</code>. Images can sit beside the post.</p></li>
+    <li><span class="n">2</span><h3>Save</h3><p>The background service notices, waits for the burst of saves to settle, and builds the site in a fresh folder.</p></li>
+    <li><span class="n">3</span><h3>It's live</h3><p>If every page rendered, it's published: to GitHub Pages, any git branch, or any command like rsync.</p></li>
+  </ol>
+
+  <div class="rules">
+    <div class="rules-src">
+      <div class="bar"><i></i><i></i><i></i><span>posts/why-i-keep-a-notebook.md</span></div>
+<pre><span class="h"># Why I keep a paper notebook</span>
+
+Every few years I try to go fully
+digital, and every few years I end
+up back at a cheap A5 notebook…</pre>
+    </div>
+    <div class="rules-out">
+      <div class="rule"><b>Title</b><span>“Why I keep a paper notebook”</span><small>from the first heading, which is removed from the body</small></div>
+      <div class="rule"><b>Address</b><span class="mono">/2026/09/why-i-keep-a-notebook/</span><small>from the file name (a date prefix sets the date)</small></div>
+      <div class="rule"><b>Date</b><span>the moment folderblog first saw it</span><small>recorded once, so editing or syncing never moves it</small></div>
+      <div class="rule"><b>Front matter</b><span>optional</span><small>add title, date, tags or any key your theme wants</small></div>
+    </div>
+  </div>
+</section>
+
+<section class="features">
+  <div class="wrap">
+    <p class="kicker">What you get</p>
+    <h2>Small engine, big guarantees</h2>
+    <div class="grid">
+      {% for f in data.features.f %}
+      <div class="card"><div class="ic">{{ f.icon }}</div><h3>{{ f.title }}</h3>{{ f.text | markdown }}</div>
+      {% endfor %}
+    </div>
+  </div>
+</section>
+
+<section class="themes wrap" id="themes">
+  <p class="kicker">Theming</p>
+  <h2>The engine owns your content.<br>The theme owns every other byte.</h2>
+  <p class="lede narrow">folderblog finds your posts, renders Markdown, builds the RSS feed and sitemap, and never slips its own markup into your pages. A theme is a folder of Jinja templates that can produce any layout and any file: pages, a search index, a stylesheet, an image.</p>
+
+  <p class="agents-intro">To prove it, we gave three coding agents the same blog, its <code>AGENTS.md</code>, and a one-line brief each. None of them needed a change to the engine.</p>
+  <div class="tabs" role="tablist">
+    {% for t in data.themes.t %}<button role="tab" class="tab{% if loop.first %} on{% endif %}" data-theme="{{ t.id }}">{{ t.name }}</button>{% endfor %}
+  </div>
+  <div class="showcase">
+    {% for t in data.themes.t %}
+    <figure class="shot{% if loop.first %} on{% endif %}" data-theme="{{ t.id }}">
+      <div class="browser"><div class="bar"><i></i><i></i><i></i><span class="url">{{ t.name | lower }} theme</span></div><img src="{{ ('/img/' ~ t.img) | url }}" alt="The same blog rendered by the {{ t.name }} theme"></div>
+      <figcaption><b>{{ t.who }}</b>{{ t.text }}</figcaption>
+    </figure>
+    {% endfor %}
+  </div>
+
+  <div class="code-duo">
+    <div class="codebox">
+      <div class="cap">theme/tags/tag.html: one template, a page per tag</div>
+<pre><span class="c">{{ '{#---' }}</span>
+<span class="k">each</span> = <span class="s">"tags"</span>
+<span class="k">url</span>  = <span class="s">"/tags/{{ '{{' }} item.slug {{ '}}' }}/"</span>
+<span class="c">{{ '---#}' }}</span>
+<span class="j">{{ '{%' }} extends "_layouts/base.html" {{ '%}' }}</span>
+<span class="j">{{ '{%' }} block main {{ '%}' }}</span>
+  &lt;h1&gt;#<span class="j">{{ '{{' }} item.name {{ '}}' }}</span>&lt;/h1&gt;
+  <span class="j">{{ '{%' }} for post in item.posts {{ '%}' }}</span> …</pre>
+    </div>
+    <div class="codebox light">
+      <div class="cap">Check your work, or let your agent do it</div>
+<pre><span class="p">❯</span> folderblog preview --fixtures stress
+<span class="p">❯</span> folderblog check
+<span class="g">ok: 37 files rendered, feed valid,
+no broken internal links</span>
+<span class="p">❯</span> folderblog data /2026/09/hello/
+{ "post": { "title": "Hello", … } }</pre>
+    </div>
+  </div>
+</section>
+
+<section class="github">
+  <div class="wrap">
+    <p class="kicker">GitHub Pages</p>
+    <h2>Five minutes once. Zero clicks after.</h2>
+    <ol class="timeline">
+      <li><b>Register a small GitHub App</b> on your own account: Administration, Contents and Pages set to read and write, with Device Flow on.</li>
+      <li><b>Install it</b> on your account.</li>
+      <li><b>Log in</b> with <code>folderblog login github</code> and a one-time code.</li>
+      <li><b>That's it.</b> <code>folderblog new myblog</code> creates the repository and turns on Pages at the first publish.</li>
+    </ol>
+    <p class="fine">Logins renew themselves. If one expires or is revoked you get a notification, and anything waiting is published within five minutes of logging back in. <a href="{{ '/guide/' | url }}">Step-by-step guide →</a></p>
+  </div>
+</section>
+
+<section class="install wrap" id="install">
+  <p class="kicker">Install</p>
+  <h2>One static binary. <code>git</code> is the only dependency.</h2>
+  <div class="tabs" role="tablist">
+    {% for o in data.install.os %}<button role="tab" class="tab{% if loop.first %} on{% endif %}" data-os="{{ o.id }}">{{ o.name }}</button>{% endfor %}
+  </div>
+  {% for o in data.install.os %}
+  <div class="cmd{% if loop.first %} on{% endif %}" data-os="{{ o.id }}"><pre>{{ o.cmd }}</pre><button class="copy" data-copy="{{ o.cmd }}">Copy</button></div>
+  {% endfor %}
+  <div class="then">
+    <p>Then:</p>
+<pre><span class="p">❯</span> folderblog login github --client-id Iv23li…   <span class="d"># once: see the guide</span>
+<span class="p">❯</span> folderblog install-service
+<span class="p">❯</span> folderblog new myblog
+<span class="p">❯</span> echo "# Hello" &gt; ~/Blogs/myblog/posts/hello.md</pre>
+  </div>
+</section>
+
+<section class="faq">
+  <div class="wrap-narrow">
+    <p class="kicker">Questions</p>
+    <h2>Good questions</h2>
+    <details><summary>Does folderblog ever change my files?</summary><p>No. It only reads your posts and pages, so an editor with the file open never complains. Its own state (first-seen dates, the last good build) lives in a hidden <code>.blog/</code> folder.</p></details>
+    <details><summary>What happens if I break something?</summary><p>The build fails in its fresh folder, the live site stays exactly as it was, and you get a desktop notification with the file and line. <code>folderblog status</code> shows it too. Fix it and the next save publishes.</p></details>
+    <details><summary>Do I have to use GitHub?</summary><p>No. Any git remote works, and so does any command: rsync, rclone, Cloudflare's wrangler, the Netlify CLI. folderblog runs it with the finished site folder.</p></details>
+    <details><summary>Can I use my own domain?</summary><p>Yes. <code>folderblog new example.com --domain example.com</code> sets it up on GitHub Pages and prints the DNS records to add at your registrar.</p></details>
+    <details><summary>Comments, analytics, search?</summary><p>Not built in, on purpose. The theme owns every byte, so a theme can add any of them. The magazine theme above generates its own search index.</p></details>
+    <details><summary>macOS or Windows?</summary><p>Linux for now: packages for Arch, Debian/Ubuntu and Fedora, plus a static x86_64 binary. It's written in Rust, so other platforms are possible.</p></details>
+  </div>
+</section>
+
+{% if posts %}
+<section class="news wrap">
+  <p class="kicker">From the blog</p>
+  {% for p in posts[:3] %}
+  <a class="news-item" href="{{ p.url }}"><time>{{ p.date | date("%B %-d, %Y") }}</time><b>{{ p.title }}</b><span>{{ p.summary | truncate_words(28) }}</span></a>
+  {% endfor %}
+</section>
+{% endif %}
+
+<section class="closer">
+  <div class="wrap center">
+    {% include "_partials/folder.html" %}
+    <h2>Write a file. Save it.<br>That's publishing.</h2>
+    <div class="ctas center"><a class="btn" href="#install">Install folderblog</a><a class="btn ghost" href="{{ params.repo }}">Star on GitHub</a></div>
+  </div>
+</section>
+
+</main>
+{% endblock %}

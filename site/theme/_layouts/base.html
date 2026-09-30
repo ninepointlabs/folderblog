@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="{{ site.language }}">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{% block title %}{{ site.title }}: a folder is a blog{% endblock %}</title>
+<meta name="description" content="{% block description %}{{ site.description }}{% endblock %}">
+<link rel="icon" href="{{ '/favicon.svg' | url }}" type="image/svg+xml">
+<link rel="canonical" href="{{ current_url | absolute_url }}">
+<meta property="og:title" content="{{ self.title() | trim }}">
+<meta property="og:description" content="{{ self.description() | trim }}">
+<meta property="og:image" content="{{ '/img/og.jpg' | absolute_url }}">
+<meta property="og:url" content="{{ current_url | absolute_url }}">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,600;1,6..72,400&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="{{ '/assets/site.css' | url }}">
+<link rel="alternate" type="application/rss+xml" title="{{ site.title }} blog" href="{{ site.feed_url }}">
+</head>
+<body class="{% block bodyclass %}{% endblock %}">
+<header class="nav">
+  <a class="brand" href="{{ site.url }}">{% include "_partials/folder.html" %}<span>folder<em>blog</em></span></a>
+  <nav>
+    <a href="{{ '/#how' | url }}">How it works</a>
+    <a href="{{ '/#themes' | url }}">Themes</a>
+    <a href="{{ '/guide/' | url }}"{% if current_url.startswith('/guide') %} aria-current="page"{% endif %}>Guide</a>
+    <a href="{{ '/blog/' | url }}"{% if current_url.startswith('/blog') %} aria-current="page"{% endif %}>Blog</a>
+    <a class="gh" href="{{ params.repo }}">GitHub ↗</a>
+  </nav>
+</header>
+{% block main %}{% endblock %}
+<footer class="foot">
+  <div class="wrap">
+    <div class="brand small">{% include "_partials/folder.html" %}<span>folder<em>blog</em></span></div>
+    <p>Free and open source (MIT) · made by <a href="https://ninepointlabs.com">Nine Point Labs</a></p>
+    <p><a href="{{ params.repo }}">GitHub</a> · <a href="{{ params.releases }}">Releases</a> · <a href="{{ '/guide/' | url }}">Guide</a> · <a href="{{ site.feed_url }}">RSS</a></p>
+    <p class="dog">This website is a folderblog blog. <a href="{{ params.repo }}/tree/main/site">See its source folder</a>.</p>
+  </div>
+</footer>
+<script src="{{ '/assets/site.js' | url }}" defer></script>
+</body>
+</html>

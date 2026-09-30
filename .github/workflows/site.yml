@@ -1,0 +1,49 @@
+# Builds folderblog.ninepointlabs.com from site/ with the released folderblog binary
+# and deploys it to GitHub Pages. The site is itself a folderblog blog.
+name: site
+
+on:
+  push:
+    branches: [main]
+    paths: ["site/**", ".github/workflows/site.yml"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+env:
+  FOLDERBLOG_VERSION: "0.1.0"
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install folderblog
+        run: |
+          curl -fsSL "https://github.com/ninepointlabs/folderblog/releases/download/v${FOLDERBLOG_VERSION}/folderblog-${FOLDERBLOG_VERSION}-x86_64-linux.tar.gz" | tar xz
+          sudo install -m755 "folderblog-${FOLDERBLOG_VERSION}-x86_64-linux/folderblog" /usr/local/bin/folderblog
+          folderblog --version
+      - name: Check
+        run: folderblog check site
+      - name: Build
+        run: folderblog build site --out _site
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

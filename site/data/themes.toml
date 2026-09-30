@@ -1,0 +1,27 @@
+[[t]]
+id = "default"
+name = "Default"
+who = "Ships with every new blog"
+img = "demo-home.jpg"
+text = "Plain, readable, good typography, light and dark. Yours to change: the whole theme is copied into the blog."
+
+[[t]]
+id = "minimal"
+name = "Text-only"
+who = "Agent 1 · “a text-only minimalist site”"
+img = "min-post.jpg"
+text = "Monospace, no colour, no images: photos become numbered plates described in text, via a four-line image override."
+
+[[t]]
+id = "magazine"
+name = "Magazine"
+who = "Agent 2 · “a dense magazine with tag pages and search”"
+img = "mag-home.jpg"
+text = "A lead story, cover tiles, section pages per tag and series, paginated archives, and client-side search from a JSON index the theme generates."
+
+[[t]]
+id = "film"
+name = "Film strip"
+who = "Agent 3 · “a single-page horizontal scroller”"
+img = "scr-post.jpg"
+text = "The whole blog on one sideways reel. Every post URL still exists and deep-links into its frame; photo posts become filmstrips."

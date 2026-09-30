@@ -9,6 +9,9 @@ where every folder is its own blog, and publishes each one to GitHub Pages (or a
 else) whenever you save. With GitHub, even starting a new blog is one command: folderblog
 creates the repository and switches on Pages for you.
 
+**Website and 3-minute video tour: <https://folderblog.ninepointlabs.com>** (the site is
+itself a folderblog blog; its source is [`site/`](site/)).
+
 It is also built to be designed by coding agents. Every blog ships with an `AGENTS.md`
 contract, and a theme is nothing but templates, so an agent can build almost any design
 without touching the engine.

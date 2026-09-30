@@ -1,0 +1,11 @@
+{% extends "_layouts/base.html" %}
+{% block title %}{{ page.title }} · folderblog{% endblock %}
+{% block description %}{{ page.meta.description or page.summary }}{% endblock %}
+{% block main %}
+<main class="doc wrap-narrow">
+  <p class="kicker">folderblog</p>
+  <h1>{{ page.title }}</h1>
+  {% if page.meta.description %}<p class="lede">{{ page.meta.description }}</p>{% endif %}
+  <div class="prose">{{ page.content }}</div>
+</main>
+{% endblock %}

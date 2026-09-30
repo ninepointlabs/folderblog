@@ -1,0 +1,14 @@
+{% extends "_layouts/base.html" %}
+{% block title %}{{ post.title }} · folderblog{% endblock %}
+{% block description %}{{ post.summary }}{% endblock %}
+{% block main %}
+<main class="doc wrap-narrow">
+  <p class="kicker"><a href="{{ '/blog/' | url }}">Blog</a> · <time datetime="{{ post.date }}">{{ post.date | date("%B %-d, %Y") }}</time></p>
+  <h1>{{ post.title }}</h1>
+  <div class="prose">{{ post.content }}</div>
+  <nav class="neighbours">
+    {% if post.newer %}<a href="{{ post.newer.url }}">← {{ post.newer.title }}</a>{% else %}<span></span>{% endif %}
+    {% if post.older %}<a href="{{ post.older.url }}">{{ post.older.title }} →</a>{% endif %}
+  </nav>
+</main>
+{% endblock %}
