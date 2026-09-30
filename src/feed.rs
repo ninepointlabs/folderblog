@@ -6,6 +6,10 @@ use crate::templates::absolute;
 use crate::util::html_escape;
 use anyhow::{Result, bail};
 
+static ROOT_RELATIVE: std::sync::LazyLock<regex::Regex> = std::sync::LazyLock::new(|| {
+    regex::Regex::new(r#"(?i)\b(?:src|href)\s*=\s*["'](/[^/"'][^"']*|/)["']"#).unwrap()
+});
+
 pub const FEED_PATH: &str = "feed.xml";
 pub const SITEMAP_PATH: &str = "sitemap.xml";
 
@@ -125,7 +129,7 @@ pub fn validate_rss(xml: &str) -> Result<usize> {
             }
             Ok(Event::CData(c)) => {
                 let html = c.into_inner().to_string();
-                for cap in regex::Regex::new(r#"(?i)\b(?:src|href)\s*=\s*["'](/[^/"'][^"']*|/)["']"#).unwrap().captures_iter(&html) {
+                for cap in ROOT_RELATIVE.captures_iter(&html) {
                     problems.push(format!("item {items}: relative URL in content: {}", &cap[1]));
                 }
             }
