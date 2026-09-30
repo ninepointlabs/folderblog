@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="{{ site.language }}">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{% block title %}{{ site.title }}{% endblock %}</title>
+{% if site.description %}<meta name="description" content="{% block description %}{{ site.description }}{% endblock %}">{% endif %}
+<link rel="stylesheet" href="{{ '/assets/style.css' | url }}">
+<link rel="stylesheet" href="{{ '/assets/highlight.css' | url }}">
+<link rel="alternate" type="application/rss+xml" title="{{ site.title }}" href="{{ site.feed_url }}">
+{% block head %}{% endblock %}
+</head>
+<body>
+<header class="site-header">
+  <a class="site-title" href="{{ site.url }}">{{ site.title }}</a>
+  <nav>
+    {% for p in pages %}<a href="{{ p.url }}"{% if p.url == current_url %} aria-current="page"{% endif %}>{{ p.title }}</a>{% endfor %}
+    <a href="{{ '/archive/' | url }}">Archive</a>
+    <a href="{{ site.feed_url }}">RSS</a>
+  </nav>
+</header>
+<main>
+{% block main %}{% endblock %}
+</main>
+<footer class="site-footer">
+  <p>{% if site.author %}{{ site.author }} · {% endif %}<a href="{{ site.feed_url }}">Subscribe via RSS</a></p>
+</footer>
+</body>
+</html>

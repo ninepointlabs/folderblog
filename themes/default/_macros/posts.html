@@ -1,0 +1,14 @@
+{% macro post_list(items) %}
+<ul class="post-list">
+  {% for p in items %}
+  <li>
+    <time datetime="{{ p.date }}">{{ p.date | date("%b %-d, %Y") }}</time>
+    <a href="{{ p.url }}">{{ p.title }}</a>{% if p.draft %} <span class="draft">draft</span>{% endif %}
+  </li>
+  {% endfor %}
+</ul>
+{% endmacro %}
+
+{% macro tag_links(tags) %}
+{% if tags %}<p class="tags">{% for t in tags %}<a href="{{ ('/tags/' ~ t.slug ~ '/') | url }}">#{{ t.name }}</a>{% if not loop.last %} {% endif %}{% endfor %}</p>{% endif %}
+{% endmacro %}

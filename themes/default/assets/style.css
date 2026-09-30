@@ -1,0 +1,83 @@
+/* folderblog default theme. Everything here is yours to change. */
+:root {
+  --text: #1d1d1f;
+  --muted: #6b6b70;
+  --bg: #fdfdfc;
+  --rule: #e6e4df;
+  --accent: #8a3b12;
+  --code-bg: #f5f3ef;
+  --measure: 38rem;
+  color-scheme: light dark;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --text: #e8e6e3;
+    --muted: #9a9892;
+    --bg: #161615;
+    --rule: #2e2d2b;
+    --accent: #e2a36f;
+    --code-bg: #1f1f1d;
+  }
+}
+* { box-sizing: border-box; }
+html { font-size: 112.5%; -webkit-text-size-adjust: 100%; }
+body {
+  margin: 0;
+  padding: 0 1.25rem;
+  background: var(--bg);
+  color: var(--text);
+  font-family: Charter, "Bitstream Charter", "Sitka Text", Cambria, Georgia, serif;
+  line-height: 1.65;
+  text-rendering: optimizeLegibility;
+  font-kerning: normal;
+  hanging-punctuation: first;
+}
+.site-header, main, .site-footer { max-width: var(--measure); margin: 0 auto; }
+.site-header {
+  display: flex; flex-wrap: wrap; gap: .5rem 1.5rem; align-items: baseline; justify-content: space-between;
+  padding: 2.5rem 0 1.5rem; border-bottom: 1px solid var(--rule); margin-bottom: 2.5rem;
+}
+.site-title { font-weight: 700; font-size: 1.15rem; color: var(--text); text-decoration: none; }
+nav a { margin-right: 1rem; color: var(--muted); text-decoration: none; font-size: .9rem; }
+nav a:last-child { margin-right: 0; }
+nav a:hover, nav a[aria-current] { color: var(--text); }
+a { color: var(--accent); text-underline-offset: .15em; text-decoration-thickness: 1px; }
+h1, h2, h3, h4 { line-height: 1.25; font-weight: 700; text-wrap: balance; overflow-wrap: break-word; }
+h1 { font-size: 2rem; margin: 0 0 .5rem; letter-spacing: -.01em; }
+h2 { font-size: 1.4rem; margin: 2.2rem 0 .6rem; }
+h3 { font-size: 1.15rem; margin: 1.8rem 0 .5rem; }
+p, ul, ol, blockquote, pre, table, figure { margin: 0 0 1.2rem; }
+.content { overflow-wrap: break-word; }
+.content img, .content video { max-width: 100%; height: auto; display: block; margin: 1.5rem auto; }
+blockquote { margin-left: 0; padding-left: 1.2rem; border-left: 3px solid var(--rule); color: var(--muted); font-style: italic; }
+hr { border: 0; border-top: 1px solid var(--rule); margin: 2.5rem 0; }
+code, pre { font-family: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, Consolas, monospace; font-size: .82em; }
+:not(pre) > code { background: var(--code-bg); padding: .1em .35em; border-radius: 3px; }
+pre { background: var(--code-bg); padding: 1rem 1.2rem; overflow-x: auto; border-radius: 4px; line-height: 1.5; }
+table { border-collapse: collapse; width: 100%; font-size: .92rem; display: block; overflow-x: auto; }
+th, td { text-align: left; padding: .45rem .7rem; border-bottom: 1px solid var(--rule); }
+th { font-weight: 700; }
+.meta, time, .empty, small { color: var(--muted); font-size: .88rem; }
+.post header { margin-bottom: 2rem; }
+.summary { margin-bottom: 2.8rem; }
+.summary h2 { margin: 0 0 .2rem; font-size: 1.45rem; }
+.summary h2 a { color: var(--text); text-decoration: none; }
+.summary h2 a:hover { color: var(--accent); }
+.intro { font-size: 1.1rem; color: var(--muted); margin-bottom: 2.5rem; }
+.post-list { list-style: none; padding: 0; }
+.post-list li { display: flex; gap: 1rem; padding: .3rem 0; }
+.post-list time { flex: 0 0 7.5rem; font-variant-numeric: tabular-nums; }
+.tags a { color: var(--muted); text-decoration: none; margin-right: .2rem; }
+.tags a:hover { color: var(--accent); }
+.neighbours, .pager { display: flex; justify-content: space-between; gap: 1rem; margin-top: 2.5rem; font-size: .92rem; }
+.draft { font-size: .7rem; text-transform: uppercase; letter-spacing: .08em; background: var(--accent); color: var(--bg); padding: .1em .4em; border-radius: 3px; vertical-align: middle; }
+.footnotes, .footnote-definition { font-size: .88rem; color: var(--muted); }
+.footnote-definition { display: flex; gap: .5rem; }
+.footnote-definition p { margin: 0; }
+.site-footer { border-top: 1px solid var(--rule); margin-top: 4rem; padding: 1.5rem 0 3rem; color: var(--muted); font-size: .88rem; }
+.site-footer a { color: var(--muted); }
+@media (max-width: 34rem) {
+  html { font-size: 106%; }
+  h1 { font-size: 1.65rem; }
+  .post-list li { flex-direction: column; gap: 0; }
+}

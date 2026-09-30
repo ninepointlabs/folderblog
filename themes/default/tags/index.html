@@ -1,0 +1,10 @@
+{% extends "_layouts/base.html" %}
+{% block title %}Tags · {{ site.title }}{% endblock %}
+{% block main %}
+<h1>Tags</h1>
+{% for t in tags | sort(attribute="count", reverse=true) %}
+<p><a href="{{ ('/tags/' ~ t.slug ~ '/') | url }}">#{{ t.name }}</a> <small>{{ t.count }} post{{ t.count | pluralize }}</small></p>
+{% else %}
+<p class="empty">No tags yet.</p>
+{% endfor %}
+{% endblock %}

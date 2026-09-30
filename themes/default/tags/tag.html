@@ -1,0 +1,13 @@
+{#---
+each = "tags"
+as = "tag"
+url = "/tags/{{ tag.slug }}/"
+---#}
+{% extends "_layouts/base.html" %}
+{% from "_macros/posts.html" import post_list %}
+{% block title %}#{{ tag.name }} · {{ site.title }}{% endblock %}
+{% block main %}
+<h1>#{{ tag.name }}</h1>
+<p class="meta">{{ tag.count }} post{{ tag.count | pluralize }}</p>
+{{ post_list(tag.posts) }}
+{% endblock %}

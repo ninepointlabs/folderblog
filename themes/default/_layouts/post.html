@@ -1,0 +1,25 @@
+{% extends "_layouts/base.html" %}
+{% from "_macros/posts.html" import tag_links %}
+{% block title %}{{ post.title }} · {{ site.title }}{% endblock %}
+{% block description %}{{ post.summary }}{% endblock %}
+{% block main %}
+<article class="post">
+  <header>
+    <h1>{{ post.title }}</h1>
+    <p class="meta">
+      <time datetime="{{ post.date }}">{{ post.date | date("%B %-d, %Y") }}</time>
+      · {{ post.reading_time }} min read{% if post.draft %} · <span class="draft">draft</span>{% endif %}
+    </p>
+  </header>
+  <div class="content">
+    {{ post.content }}
+  </div>
+  <footer>
+    {{ tag_links(post.tags) }}
+    <nav class="neighbours">
+      {% if post.newer %}<a rel="next" href="{{ post.newer.url }}">← {{ post.newer.title }}</a>{% else %}<span></span>{% endif %}
+      {% if post.older %}<a rel="prev" href="{{ post.older.url }}">{{ post.older.title }} →</a>{% endif %}
+    </nav>
+  </footer>
+</article>
+{% endblock %}

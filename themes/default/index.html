@@ -1,0 +1,27 @@
+{#---
+paginate = "posts"
+per_page = 20
+url = "{% if pager.number == 1 %}/{% else %}/page/{{ pager.number }}/{% endif %}"
+---#}
+{% extends "_layouts/base.html" %}
+{% block title %}{% if pager.number > 1 %}Page {{ pager.number }} · {% endif %}{{ site.title }}{% endblock %}
+{% block main %}
+{% if site.description and pager.number == 1 %}<p class="intro">{{ site.description }}</p>{% endif %}
+{% for p in pager.items %}
+<article class="summary">
+  <h2><a href="{{ p.url }}">{{ p.title }}</a>{% if p.draft %} <span class="draft">draft</span>{% endif %}</h2>
+  <p class="meta"><time datetime="{{ p.date }}">{{ p.date | date("%B %-d, %Y") }}</time></p>
+  {{ p.excerpt }}
+  {% if p.has_more or p.word_count > 120 %}<p><a href="{{ p.url }}">Continue reading →</a></p>{% endif %}
+</article>
+{% else %}
+<p class="empty">Nothing here yet.</p>
+{% endfor %}
+{% if pager.total > 1 %}
+<nav class="pager">
+  {% if pager.prev %}<a href="{{ pager.prev }}">← Newer</a>{% else %}<span></span>{% endif %}
+  <span>Page {{ pager.number }} of {{ pager.total }}</span>
+  {% if pager.next %}<a href="{{ pager.next }}">Older →</a>{% else %}<span></span>{% endif %}
+</nav>
+{% endif %}
+{% endblock %}
