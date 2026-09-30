@@ -31,6 +31,9 @@ pub enum Cmd {
         /// Only `github` is supported
         #[arg(default_value = "github")]
         service: String,
+        /// Client ID of your GitHub App (only needed the first time; it is remembered)
+        #[arg(long)]
+        client_id: Option<String>,
     },
     /// Forget the stored GitHub login
     Logout {

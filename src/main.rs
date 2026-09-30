@@ -79,11 +79,11 @@ fn run(cli: Cli) -> Result<i32> {
             }
             Ok(0)
         }
-        Cmd::Login { service } => {
+        Cmd::Login { service, client_id } => {
             if service != "github" {
                 bail!("only `folderblog login github` is supported");
             }
-            let tok = github::login(|url, code| {
+            let tok = github::login(client_id.as_deref(), |url, code| {
                 println!("Open {url} and enter the code:  {code}");
                 println!("(waiting for you to approve folderblog on GitHub…)");
             })?;
@@ -275,6 +275,20 @@ pub fn new_blog(dir: &Path, github: Option<(&str, &str, Option<&str>)>) -> Resul
 
 fn install_service(root: &Path, no_start: bool, print: bool) -> Result<i32> {
     let exe = std::env::current_exe()?.canonicalize()?;
+    // Installed from a package: the unit already ships in /usr/lib/systemd/user.
+    let packaged = Path::new("/usr/lib/systemd/user/folderblog.service");
+    if !print && packaged.exists() && exe == Path::new("/usr/bin/folderblog") && *root == home().join("Blogs") {
+        if !no_start {
+            let st = std::process::Command::new("systemctl").args(["--user", "enable", "--now", APP]).status()?;
+            if !st.success() {
+                bail!("systemctl --user enable --now {APP} failed");
+            }
+            println!("enabled the packaged service; logs: journalctl --user -u {APP} -f");
+        } else {
+            println!("the package already installed the unit; start it with: systemctl --user enable --now {APP}");
+        }
+        return Ok(0);
+    }
     let unit = format!(
         "[Unit]\nDescription=folderblog: publish blogs from {root}\nAfter=default.target\n\n[Service]\nType=simple\nExecStart={exe} watch --root {root}\nRestart=on-failure\nRestartSec=5\nEnvironment=RUST_BACKTRACE=1\n\n[Install]\nWantedBy=default.target\n",
         root = root.display(),

@@ -2,6 +2,15 @@
 name = "folderblog"
 version = "0.1.0"
 edition = "2024"
+rust-version = "1.89"
+description = "A folder is a blog: save Markdown into a folder and it is published to GitHub Pages (or anywhere) seconds later."
+license = "MIT"
+repository = "https://github.com/ninepointlabs/folderblog"
+homepage = "https://github.com/ninepointlabs/folderblog"
+readme = "README.md"
+authors = ["Tim <tim@ninepointlabs.com>"]
+keywords = ["blog", "static-site", "markdown", "github-pages"]
+categories = ["command-line-utilities", "web-programming"]
 
 [dependencies]
 anyhow = "1.0.104"
@@ -26,3 +35,37 @@ walkdir = "2.5.0"
 
 [dev-dependencies]
 tempfile = "3.27.0"
+
+[profile.release]
+strip = true
+lto = "thin"
+
+[package.metadata.deb]
+maintainer = "Tim <tim@ninepointlabs.com>"
+section = "web"
+priority = "optional"
+depends = "git"
+recommends = "libnotify-bin"
+extended-description = """\
+folderblog watches a folder of blogs. Save a Markdown file and the blog is rebuilt and \
+published seconds later: to GitHub Pages (repo and Pages set up automatically), a git \
+branch, or any command such as rsync. Themes are plain Jinja templates with an \
+AGENTS.md contract so coding agents can design them."""
+assets = [
+    ["target/release/folderblog", "usr/bin/", "755"],
+    ["packaging/folderblog.service", "usr/lib/systemd/user/", "644"],
+    ["README.md", "usr/share/doc/folderblog/README.md", "644"],
+    ["LICENSE", "usr/share/licenses/folderblog/LICENSE", "644"],
+]
+
+[package.metadata.generate-rpm]
+summary = "A folder is a blog: save Markdown, it goes live"
+assets = [
+    { source = "target/release/folderblog", dest = "/usr/bin/folderblog", mode = "755" },
+    { source = "packaging/folderblog.service", dest = "/usr/lib/systemd/user/folderblog.service", mode = "644" },
+    { source = "README.md", dest = "/usr/share/doc/folderblog/README.md", mode = "644", doc = true },
+    { source = "LICENSE", dest = "/usr/share/licenses/folderblog/LICENSE", mode = "644", doc = true },
+]
+
+[package.metadata.generate-rpm.requires]
+git = "*"

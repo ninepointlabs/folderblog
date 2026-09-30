@@ -1,0 +1,15 @@
+[Unit]
+Description=folderblog: publish the blogs in ~/Blogs
+Documentation=https://github.com/ninepointlabs/folderblog
+After=default.target network-online.target
+
+[Service]
+Type=simple
+# Blogs live in ~/Blogs. To use another folder: systemctl --user edit folderblog
+# and add: Environment=FOLDERBLOG_ROOT=/path/to/blogs
+ExecStart=/usr/bin/folderblog watch
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=default.target

@@ -12,16 +12,27 @@ use std::fs::OpenOptions;
 use std::path::PathBuf;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-/// The folderblog GitHub App (public client ID; device flow needs no secret).
-pub const DEFAULT_CLIENT_ID: &str = "Iv23liotOZjRQl8Wv1tJ";
 const API: &str = "https://api.github.com";
 /// Renew when the access token has less than this left.
 const RENEW_MARGIN: u64 = 10 * 60;
 /// Warn this long before the login itself (the refresh token) runs out.
 pub const WARN_BEFORE: u64 = 7 * 24 * 3600;
 
-pub fn client_id() -> String {
-    std::env::var("FOLDERBLOG_GITHUB_CLIENT_ID").unwrap_or_else(|_| DEFAULT_CLIENT_ID.to_string())
+/// The GitHub App to log in with: `--client-id`, else $FOLDERBLOG_GITHUB_CLIENT_ID, else
+/// the app used for the previous login. Client IDs are public; device flow needs no secret.
+pub fn client_id(flag: Option<&str>) -> Result<String> {
+    if let Some(c) = flag {
+        return Ok(c.to_string());
+    }
+    if let Ok(c) = std::env::var("FOLDERBLOG_GITHUB_CLIENT_ID") {
+        return Ok(c);
+    }
+    if let Some(t) = load() {
+        return Ok(t.client_id);
+    }
+    bail!(
+        "no GitHub App to log in with. Create one (README: \"Preparing GitHub\"), then run\n  folderblog login github --client-id <its Client ID>"
+    )
 }
 
 pub fn config_dir() -> PathBuf {
@@ -162,8 +173,8 @@ fn with_lock<T>(f: impl FnOnce() -> Result<T>) -> Result<T> {
 }
 
 /// Interactive device-flow login. `show` is called with (verification URL, user code).
-pub fn login(show: impl Fn(&str, &str)) -> Result<Token> {
-    let cid = client_id();
+pub fn login(client: Option<&str>, show: impl Fn(&str, &str)) -> Result<Token> {
+    let cid = client_id(client)?;
     #[derive(Deserialize)]
     struct Device {
         device_code: String,
@@ -179,7 +190,7 @@ pub fn login(show: impl Fn(&str, &str)) -> Result<Token> {
         .context("contacting GitHub")?;
     let body = r.body_mut().read_to_string()?;
     let d: Device = serde_json::from_str(&body).map_err(|_| {
-        anyhow!("GitHub refused to start a login: {body}\n(is Device Flow enabled on the GitHub App?)")
+        anyhow!("GitHub refused to start a login: {body}\n(check the Client ID, and that \"Enable Device Flow\" is ticked in the GitHub App's settings)")
     })?;
     show(&d.verification_uri, &d.user_code);
     let deadline = now() + d.expires_in;
