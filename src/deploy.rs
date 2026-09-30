@@ -18,10 +18,19 @@ pub trait Target {
 
 pub fn target_for(cfg: &DeployConfig) -> Box<dyn Target> {
     match cfg.clone() {
-        DeployConfig::Git { remote, branch, nojekyll, author_name, author_email } => {
-            Box::new(GitTarget { remote, branch, nojekyll, author_name, author_email })
-        }
+        DeployConfig::Git { remote, branch, nojekyll, author_name, author_email } => Box::new(GitTarget {
+            remote,
+            branch,
+            nojekyll,
+            author_name,
+            author_email,
+            env: vec![],
+            cname: None,
+        }),
         DeployConfig::Command { command } => Box::new(CommandTarget { command }),
+        DeployConfig::Github { owner, repo, branch, domain, private } => {
+            Box::new(GithubTarget { owner, repo, branch, domain, private })
+        }
     }
 }
 
@@ -31,13 +40,18 @@ pub struct GitTarget {
     pub nojekyll: bool,
     pub author_name: String,
     pub author_email: String,
+    /// Extra environment for git (e.g. credentials for the GitHub target).
+    pub env: Vec<(String, String)>,
+    /// Written as CNAME in the pushed tree, so a Pages custom domain survives redeploys.
+    pub cname: Option<String>,
 }
 
-fn git(dir: &Path, args: &[&str]) -> Result<String> {
+fn git(dir: &Path, args: &[&str], env: &[(String, String)]) -> Result<String> {
     let out = Command::new("git")
         .args(args)
         .current_dir(dir)
         .env("GIT_TERMINAL_PROMPT", "0")
+        .envs(env.iter().map(|(k, v)| (k, v)))
         .output()
         .with_context(|| format!("running git {}", args.join(" ")))?;
     if !out.status.success() {
@@ -55,18 +69,18 @@ impl Target for GitTarget {
         let work = blog_dir.join(STATE_DIR).join("deploy").join("git");
         if !work.join(".git").is_dir() {
             std::fs::create_dir_all(&work)?;
-            git(&work, &["init", "-q"])?;
-            git(&work, &["remote", "add", "origin", &self.remote])?;
+            git(&work, &["init", "-q"], &self.env)?;
+            git(&work, &["remote", "add", "origin", &self.remote], &self.env)?;
         } else {
-            git(&work, &["remote", "set-url", "origin", &self.remote])?;
+            git(&work, &["remote", "set-url", "origin", &self.remote], &self.env)?;
         }
-        let remote_has_branch = git(&work, &["fetch", "-q", "--depth", "1", "origin", &self.branch]).is_ok();
+        let remote_has_branch = git(&work, &["fetch", "-q", "--depth", "1", "origin", &self.branch], &self.env).is_ok();
         let branch_ref = format!("refs/heads/{}", self.branch);
         if remote_has_branch {
-            git(&work, &["checkout", "-q", "-f", "-B", &self.branch, "FETCH_HEAD"])?;
+            git(&work, &["checkout", "-q", "-f", "-B", &self.branch, "FETCH_HEAD"], &self.env)?;
         } else {
-            git(&work, &["symbolic-ref", "HEAD", &branch_ref])?;
-            let _ = git(&work, &["read-tree", "--empty"]);
+            git(&work, &["symbolic-ref", "HEAD", &branch_ref], &self.env)?;
+            let _ = git(&work, &["read-tree", "--empty"], &self.env);
         }
         // Replace the worktree with the build output.
         for e in std::fs::read_dir(&work)? {
@@ -84,9 +98,19 @@ impl Target for GitTarget {
         if self.nojekyll {
             std::fs::write(work.join(".nojekyll"), "")?;
         }
-        git(&work, &["add", "-A"])?;
-        let unchanged = Command::new("git").args(["diff", "--cached", "--quiet"]).current_dir(&work).status()?.success();
-        let has_head = git(&work, &["rev-parse", "--verify", "-q", "HEAD"]).is_ok();
+        if let Some(domain) = &self.cname {
+            if !out.join("CNAME").exists() {
+                std::fs::write(work.join("CNAME"), format!("{domain}\n"))?;
+            }
+        }
+        git(&work, &["add", "-A"], &self.env)?;
+        let unchanged = Command::new("git")
+            .args(["diff", "--cached", "--quiet"])
+            .current_dir(&work)
+            .envs(self.env.iter().map(|(k, v)| (k, v)))
+            .status()?
+            .success();
+        let has_head = git(&work, &["rev-parse", "--verify", "-q", "HEAD"], &self.env).is_ok();
         if unchanged && has_head && remote_has_branch {
             return Ok("no changes".into());
         }
@@ -105,11 +129,63 @@ impl Target for GitTarget {
                     "-m",
                     &msg,
                 ],
+                &self.env,
             )?;
         }
-        git(&work, &["push", "-q", "origin", &format!("HEAD:{branch_ref}")])?;
-        let sha = git(&work, &["rev-parse", "--short", "HEAD"])?;
+        git(&work, &["push", "-q", "origin", &format!("HEAD:{branch_ref}")], &self.env)?;
+        let sha = git(&work, &["rev-parse", "--short", "HEAD"], &self.env)?;
         Ok(format!("pushed {sha}"))
+    }
+}
+
+pub struct GithubTarget {
+    pub owner: String,
+    pub repo: String,
+    pub branch: String,
+    pub domain: Option<String>,
+    pub private: bool,
+}
+
+impl Target for GithubTarget {
+    fn describe(&self) -> String {
+        let url = match &self.domain {
+            Some(d) => format!("https://{d}"),
+            None => crate::github::pages_url(&self.owner, &self.repo),
+        };
+        format!("GitHub Pages {}/{} → {url}", self.owner, self.repo)
+    }
+
+    fn deploy(&self, blog_dir: &Path, out: &Path) -> Result<String> {
+        let tok = crate::github::access_token()?;
+        let title = Config::load(blog_dir).map(|c| c.title).unwrap_or_default();
+        let created = crate::github::ensure_repo(&self.owner, &self.repo, self.private, &format!("{title} (published by folderblog)"))?;
+        let git = GitTarget {
+            remote: format!("https://github.com/{}/{}.git", self.owner, self.repo),
+            branch: self.branch.clone(),
+            nojekyll: true,
+            author_name: tok.login.clone(),
+            author_email: format!("{}@users.noreply.github.com", tok.login),
+            env: crate::github::git_env(&tok.access_token),
+            cname: self.domain.clone(),
+        };
+        let pushed = git.deploy(blog_dir, out).map_err(|e| {
+            // git's own message for a bad token is "could not read Username"; ask the API
+            // whether the login is the real problem so the user gets the right advice.
+            match crate::github::check() {
+                Err(auth) if crate::github::auth_problem(&auth).is_some() => auth,
+                _ => e,
+            }
+        })?;
+        let enabled = crate::github::ensure_pages(&self.owner, &self.repo, &self.branch, self.domain.as_deref())?;
+        let mut notes = vec![];
+        if created {
+            notes.push("created repo".to_string());
+        }
+        if enabled {
+            notes.push("enabled Pages".to_string());
+        }
+        notes.push(pushed);
+        Ok(notes.join(", "))
     }
 }
 
@@ -189,6 +265,7 @@ pub fn deploy(blog_dir: &Path, force: bool) -> Result<Outcome> {
         detail: res.as_ref().ok().cloned(),
         error: res.as_ref().err().map(|e| format!("{e:#}")),
         hash: Some(hash.clone()),
+        auth_problem: res.as_ref().err().and_then(crate::github::auth_problem).map(|p| p.to_string()),
     });
     if res.is_ok() {
         st.deployed_hash = Some(hash);

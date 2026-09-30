@@ -24,7 +24,8 @@ and deploy target.
 
 ```sh
 cargo install --path .
-folderblog new example.com          # creates ~/Blogs/example.com
+folderblog login github             # once; enter the code shown at github.com/login/device
+folderblog new example.com          # creates ~/Blogs/example.com, published to GitHub Pages
 folderblog install-service          # writes and starts ~/.config/systemd/user/folderblog.service
 folderblog status
 journalctl --user -u folderblog -f
@@ -57,7 +58,19 @@ journalctl --user -u folderblog -f
 
 ## Deploy targets
 
+With `folderblog login github` done, `folderblog new NAME` writes a `github` target and
+the first deploy creates the repo and turns on Pages; there is nothing to do on GitHub.
+The login renews itself; if it expires or is revoked you get a desktop notification
+(then a daily reminder), `status` says so, and pending posts publish within 5 minutes
+of logging in again.
+
 ```toml
+[deploy]
+type = "github"                 # repo + Pages created automatically
+owner = "you"
+repo = "example.com"
+# domain = "example.com"        # custom domain: CNAME + Pages setting (you add DNS)
+
 [deploy]
 type = "git"                    # pushes the output to a branch (GitHub Pages)
 remote = "git@github.com:you/site.git"

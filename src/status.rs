@@ -25,6 +25,9 @@ pub struct DeployStatus {
     pub error: Option<String>,
     /// Hash of the output tree last deployed successfully.
     pub hash: Option<String>,
+    /// Set when the failure is a login problem the user must fix.
+    #[serde(default)]
+    pub auth_problem: Option<String>,
 }
 
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]
@@ -86,6 +89,9 @@ pub fn describe(name: &str, st: &Status) -> String {
         )),
         Some(d) => {
             s.push_str(&format!("     deploy  FAILED at {} via {}\n", d.time, d.target));
+            if let Some(p) = &d.auth_problem {
+                s.push_str(&format!("             LOGIN: {p}\n             (posts keep building and publish once you log in again)\n"));
+            }
             for line in d.error.as_deref().unwrap_or("").lines().take(10) {
                 s.push_str(&format!("             {line}\n"));
             }

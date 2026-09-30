@@ -15,6 +15,7 @@ use std::time::{Duration, Instant};
 
 pub const QUIET: Duration = Duration::from_millis(700);
 pub const MAX_WAIT: Duration = Duration::from_secs(8);
+pub const RETRY_FAILED: Duration = Duration::from_secs(5 * 60);
 
 pub fn log(msg: impl AsRef<str>) {
     // stderr goes to the journal under systemd.
@@ -31,6 +32,57 @@ pub fn notify_desktop(summary: &str, body: &str, critical: bool) {
         .stderr(std::process::Stdio::null())
         .spawn()
         .and_then(|mut c| c.wait());
+}
+
+/// Login problems are notified once, then at most daily, instead of on every save.
+static LAST_AUTH_NOTICE: std::sync::Mutex<Option<Instant>> = std::sync::Mutex::new(None);
+const AUTH_REMINDER: Duration = Duration::from_secs(24 * 3600);
+
+pub fn notify_auth(problem: &crate::github::AuthProblem) {
+    let mut last = LAST_AUTH_NOTICE.lock().unwrap();
+    if last.is_some_and(|t| t.elapsed() < AUTH_REMINDER) {
+        return;
+    }
+    *last = Some(Instant::now());
+    log(format!("GitHub login problem: {problem}"));
+    notify_desktop(
+        "folderblog: GitHub login needs attention",
+        &format!("{problem}.\nPosts keep building and will publish once you log in again."),
+        true,
+    );
+}
+
+fn auth_ok() {
+    *LAST_AUTH_NOTICE.lock().unwrap() = None;
+}
+
+fn uses_github(blog: &Path) -> bool {
+    matches!(Config::load(blog).ok().and_then(|c| c.deploy), Some(crate::config::DeployConfig::Github { .. }))
+}
+
+/// Daily: confirm the login still works (renewing it) and warn before it runs out.
+pub fn check_github_login(root: &Path) {
+    if !list_blogs(root).iter().any(|b| uses_github(b)) {
+        return;
+    }
+    match crate::github::check() {
+        Ok(tok) => {
+            auth_ok();
+            let days = tok.login_days_left();
+            if days >= 0 && (days as u64) * 86400 <= crate::github::WARN_BEFORE {
+                log(format!("GitHub login expires in {days} days"));
+                notify_desktop(
+                    "folderblog: GitHub login expires soon",
+                    &format!("Run `folderblog login github` within {days} days to keep publishing."),
+                    false,
+                );
+            }
+        }
+        Err(e) => match crate::github::auth_problem(&e) {
+            Some(p) => notify_auth(&p),
+            None => log(format!("GitHub login check failed (will retry): {e:#}")),
+        },
+    }
 }
 
 pub fn list_blogs(root: &Path) -> Vec<PathBuf> {
@@ -115,11 +167,19 @@ pub fn build_and_deploy(blog: &Path) -> bool {
             match crate::deploy::deploy(blog, false) {
                 Ok(crate::deploy::Outcome::NoTarget) => log(format!("{name}: no [deploy] target configured")),
                 Ok(crate::deploy::Outcome::Unchanged) => log(format!("{name}: output unchanged, nothing to deploy")),
-                Ok(crate::deploy::Outcome::Deployed(d)) => log(format!("{name}: deployed ({d})")),
+                Ok(crate::deploy::Outcome::Deployed(d)) => {
+                    if uses_github(blog) {
+                        auth_ok();
+                    }
+                    log(format!("{name}: deployed ({d})"))
+                }
                 Err(e) => {
                     let msg = format!("{e:#}");
                     log(format!("{name}: deploy FAILED:\n{msg}"));
-                    notify_desktop(&format!("folderblog: {name} deploy failed"), &msg, true);
+                    match crate::github::auth_problem(&e) {
+                        Some(p) => notify_auth(&p),
+                        None => notify_desktop(&format!("folderblog: {name} deploy failed"), &msg, true),
+                    }
                     return false;
                 }
             }
@@ -147,6 +207,9 @@ pub fn watch(root: &Path) -> Result<()> {
     let mut pending: HashMap<PathBuf, Pending> = HashMap::new();
     let mut running: HashMap<PathBuf, bool> = HashMap::new(); // blog -> changed while running
 
+    let mut next_login_check = Instant::now() + Duration::from_secs(5);
+    let mut next_retry = Instant::now() + RETRY_FAILED;
+
     // Initial pass: build everything so a restart catches up on changes made while stopped.
     for blog in list_blogs(&root) {
         let now = Instant::now();
@@ -173,6 +236,24 @@ pub fn watch(root: &Path) -> Result<()> {
             Ok(Err(e)) => log(format!("watch error: {e}")),
             Err(mpsc::RecvTimeoutError::Timeout) => {}
             Err(mpsc::RecvTimeoutError::Disconnected) => anyhow::bail!("watcher stopped"),
+        }
+        if Instant::now() >= next_login_check {
+            next_login_check = Instant::now() + Duration::from_secs(24 * 3600);
+            let root = root.clone();
+            std::thread::spawn(move || check_github_login(&root));
+        }
+        // Failed deploys (offline, login expired…) are retried, so pending posts go out
+        // on their own once the problem is fixed.
+        if Instant::now() >= next_retry {
+            next_retry = Instant::now() + RETRY_FAILED;
+            for blog in list_blogs(&root) {
+                let st = crate::status::load(&blog);
+                let deploy_failed = st.build.as_ref().is_some_and(|b| b.ok) && st.deploy.as_ref().is_some_and(|d| !d.ok);
+                if deploy_failed && !running.contains_key(&blog) && !pending.contains_key(&blog) {
+                    let now = Instant::now();
+                    pending.insert(blog, Pending { first: now - MAX_WAIT, last: now - QUIET });
+                }
+            }
         }
         while let Ok(blog) = done_rx.try_recv() {
             if running.remove(&blog) == Some(true) {

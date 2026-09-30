@@ -10,12 +10,32 @@ pub struct Cli {
 
 #[derive(Subcommand)]
 pub enum Cmd {
-    /// Create a new blog folder with the default theme and AGENTS.md
+    /// Create a new blog folder with the default theme and AGENTS.md (published to GitHub Pages if logged in)
     New {
         /// Blog name (usually its domain), created under the root; or a path
         name: String,
         #[arg(long, env = "FOLDERBLOG_ROOT")]
         root: Option<PathBuf>,
+        /// Serve the GitHub Pages site at this custom domain (you add the DNS records)
+        #[arg(long)]
+        domain: Option<String>,
+        /// GitHub repo name (default: the blog name)
+        #[arg(long)]
+        repo: Option<String>,
+        /// Don't set up GitHub Pages even if logged in
+        #[arg(long)]
+        no_github: bool,
+    },
+    /// Log in to GitHub so blogs can be published to GitHub Pages with no manual setup
+    Login {
+        /// Only `github` is supported
+        #[arg(default_value = "github")]
+        service: String,
+    },
+    /// Forget the stored GitHub login
+    Logout {
+        #[arg(default_value = "github")]
+        service: String,
     },
     /// Build the blog into .blog/public (or --out) without deploying
     Build {

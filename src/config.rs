@@ -79,6 +79,18 @@ pub enum DeployConfig {
     Command {
         command: String,
     },
+    /// GitHub Pages via the folderblog GitHub App login. Creates the repo and turns on
+    /// Pages on first deploy, so a new blog needs no manual GitHub steps.
+    Github {
+        owner: String,
+        repo: String,
+        #[serde(default = "default_branch")]
+        branch: String,
+        #[serde(default)]
+        domain: Option<String>,
+        #[serde(default)]
+        private: bool,
+    },
 }
 
 fn default_language() -> String {
@@ -133,12 +145,32 @@ impl Config {
     }
 }
 
-pub fn default_config(name: &str) -> String {
+/// blog.toml for a new blog. `github` is (owner, repo, domain) when logged in to GitHub.
+pub fn default_config(name: &str, github: Option<(&str, &str, Option<&str>)>) -> String {
     let host = if name.contains('.') { name.to_string() } else { format!("{name}.example.com") };
-    format!(
+    let (base_url, deploy) = match github {
+        Some((owner, repo, domain)) => {
+            let base = match domain {
+                Some(d) => format!("https://{d}"),
+                None => crate::github::pages_url(owner, repo),
+            };
+            let domain_line = match domain {
+                Some(d) => format!("domain = \"{d}\"\n"),
+                None => "# domain = \"example.com\"   # custom domain; also set base_url and your DNS\n".into(),
+            };
+            (
+                base,
+                format!(
+                    "# Published to GitHub Pages. The repo is created and Pages turned on at the first deploy.\n[deploy]\ntype = \"github\"\nowner = \"{owner}\"\nrepo = \"{repo}\"\n{domain_line}"
+                ),
+            )
+        }
+        None => (format!("https://{host}"), String::new()),
+    };
+    let text = format!(
         r#"# folderblog site configuration. See AGENTS.md for every key.
 title = "{name}"
-base_url = "https://{host}"
+base_url = "{base_url}"
 description = ""
 author = ""
 language = "en"
@@ -154,7 +186,8 @@ limit = 20
 # pre = []
 # post = []
 
-# Deploy target. Uncomment one.
+{deploy}
+# Other deploy targets:
 # [deploy]
 # type = "git"
 # remote = "git@github.com:you/{name}.git"
@@ -167,5 +200,6 @@ limit = 20
 # Free-form values, available to templates as site.params / params.
 [params]
 "#
-    )
+    );
+    text
 }

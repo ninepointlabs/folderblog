@@ -7,6 +7,7 @@ mod contract;
 mod deploy;
 mod feed;
 mod fixtures;
+mod github;
 mod markdown;
 mod preview;
 mod render;
@@ -57,11 +58,48 @@ fn main() {
 
 fn run(cli: Cli) -> Result<i32> {
     match cli.cmd {
-        Cmd::New { name, root } => {
+        Cmd::New { name, root, domain, repo, no_github } => {
             let dir = if name.contains('/') { PathBuf::from(&name) } else { default_root(root).join(&name) };
-            new_blog(&dir)?;
+            let base = dir.file_name().context("bad path")?.to_string_lossy().to_string();
+            let login = if no_github { None } else { github::load() };
+            let gh = login.as_ref().map(|t| (t.login.clone(), github::repo_name(repo.as_deref().unwrap_or(&base))));
+            new_blog(&dir, gh.as_ref().map(|(o, r)| (o.as_str(), r.as_str(), domain.as_deref())))?;
             println!("created {}", dir.display());
-            println!("next: write posts/*.md, then `folderblog preview {}`; configure [deploy] in blog.toml", dir.display());
+            match &gh {
+                Some((owner, repo)) => {
+                    let url = domain.as_ref().map(|d| format!("https://{d}/")).unwrap_or_else(|| format!("{}/", github::pages_url(owner, repo)));
+                    println!("publishes to GitHub Pages: repo {owner}/{repo} is created on the first deploy, site at {url}");
+                    if let Some(d) = &domain {
+                        println!("add DNS for {d}: {}", dns_help(d, owner));
+                    }
+                    println!("the watch service deploys it automatically; or run `folderblog deploy {}`", dir.display());
+                }
+                None if !no_github => println!("not logged in to GitHub, so no deploy target was set; run `folderblog login github` first, or edit [deploy] in blog.toml"),
+                None => println!("no deploy target set; edit [deploy] in blog.toml"),
+            }
+            Ok(0)
+        }
+        Cmd::Login { service } => {
+            if service != "github" {
+                bail!("only `folderblog login github` is supported");
+            }
+            let tok = github::login(|url, code| {
+                println!("Open {url} and enter the code:  {code}");
+                println!("(waiting for you to approve folderblog on GitHub…)");
+            })?;
+            println!("logged in to GitHub as {}; this login lasts about {} days and renews itself", tok.login, tok.login_days_left());
+            println!("if the watch service is running, anything waiting to publish goes out within 5 minutes");
+            Ok(0)
+        }
+        Cmd::Logout { service } => {
+            if service != "github" {
+                bail!("only `folderblog logout github` is supported");
+            }
+            if github::logout()? {
+                println!("forgot the GitHub login (to revoke it on GitHub too: Settings → Applications → Authorized GitHub Apps)");
+            } else {
+                println!("not logged in");
+            }
             Ok(0)
         }
         Cmd::Build { blog, out, drafts, fixtures } => {
@@ -165,11 +203,24 @@ fn run(cli: Cli) -> Result<i32> {
                 println!("{}", serde_json::to_string_pretty(&serde_json::json!({"root": root, "daemon": daemon, "blogs": v}))?);
             } else {
                 println!("root {}  (service: {daemon})", root.display());
+                match github::load() {
+                    Some(t) if t.login_days_left() < 0 => println!("GitHub: login EXPIRED; run `folderblog login github`"),
+                    Some(t) => println!("GitHub: logged in as {} (login renews itself; re-login needed in {} days)", t.login, t.login_days_left()),
+                    None => println!("GitHub: not logged in"),
+                }
                 if blogs.is_empty() {
                     println!("no blogs (folders containing blog.toml)");
                 }
                 for b in &blogs {
                     print!("{}", status::describe(&b.file_name().unwrap().to_string_lossy(), &status::load(b)));
+                    if let Some(config::DeployConfig::Github { owner, repo, .. }) = config::Config::load(b).ok().and_then(|c| c.deploy) {
+                        if github::load().is_some() {
+                            match github::pages_status(&owner, &repo) {
+                                Ok(s) => println!("     pages   GitHub Pages build: {s}"),
+                                Err(e) => println!("     pages   could not ask GitHub: {e:#}"),
+                            }
+                        }
+                    }
                 }
             }
             let bad = blogs.iter().any(|b| !status::healthy(&status::load(b)));
@@ -192,7 +243,18 @@ fn run(cli: Cli) -> Result<i32> {
     }
 }
 
-pub fn new_blog(dir: &Path) -> Result<()> {
+fn dns_help(domain: &str, owner: &str) -> String {
+    if domain.matches('.').count() >= 2 && !domain.starts_with("www.") {
+        format!("a CNAME record {domain} → {}.github.io", owner.to_lowercase())
+    } else {
+        format!(
+            "A records for {domain} → 185.199.108.153, 185.199.109.153, 185.199.110.153, 185.199.111.153 (and optionally CNAME www → {}.github.io)",
+            owner.to_lowercase()
+        )
+    }
+}
+
+pub fn new_blog(dir: &Path, github: Option<(&str, &str, Option<&str>)>) -> Result<()> {
     if dir.join(config::CONFIG_FILE).exists() {
         bail!("{} already has a blog.toml", dir.display());
     }
@@ -201,7 +263,7 @@ pub fn new_blog(dir: &Path) -> Result<()> {
         std::fs::create_dir_all(dir.join(d))?;
     }
     fixtures::DEFAULT_THEME.extract(dir.join("theme"))?;
-    std::fs::write(dir.join(config::CONFIG_FILE), config::default_config(&name))?;
+    std::fs::write(dir.join(config::CONFIG_FILE), config::default_config(&name, github))?;
     std::fs::write(dir.join("AGENTS.md"), contract::update(None))?;
     std::fs::write(dir.join(".gitignore"), ".blog/\n")?;
     std::fs::write(

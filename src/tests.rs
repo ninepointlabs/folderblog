@@ -407,7 +407,7 @@ fn check_reports_broken_links_and_template_errors() {
 fn new_default_blog() -> (tempfile::TempDir, PathBuf) {
     let tmp = tempfile::tempdir().unwrap();
     let dir = tmp.path().join("example.org");
-    crate::new_blog(&dir).unwrap();
+    crate::new_blog(&dir, None).unwrap();
     (tmp, dir)
 }
 
@@ -494,21 +494,25 @@ fn every_documented_field_exists() {
 
 #[test]
 fn every_documented_config_key_parses() {
+    let value = |k: &crate::contract::Field| -> String {
+        if k.ty.starts_with("list") {
+            "['x']".into()
+        } else if k.ty == "int" {
+            "3".into()
+        } else if k.ty == "bool" {
+            "true".into()
+        } else {
+            "'x'".into()
+        }
+    };
     let mut toml = String::from("title='t'\nbase_url='https://x.com'\n");
     let mut tables: std::collections::BTreeMap<&str, Vec<String>> = Default::default();
+    let mut deploy_keys = vec![];
     for k in crate::contract::CONFIG_KEYS {
         match k.name.split_once('.') {
-            Some((t, key)) => {
-                let v = match (t, key) {
-                    ("deploy", "type") => "'git'".into(),
-                    ("deploy", "command") => continue,
-                    (_, _) if k.ty.starts_with("list") => "['x']".into(),
-                    (_, _) if k.ty == "int" => "3".into(),
-                    (_, _) if k.ty == "bool" => "true".into(),
-                    _ => "'x'".to_string(),
-                };
-                tables.entry(t).or_default().push(format!("{key} = {v}"));
-            }
+            Some(("deploy", "type")) => {}
+            Some(("deploy", key)) => deploy_keys.push((key, k)),
+            Some((t, key)) => tables.entry(t).or_default().push(format!("{key} = {}", value(k))),
             None if ["title", "base_url", "params"].contains(&k.name) => {}
             None => toml.push_str(&format!("{} = '/{{slug}}/'\n", k.name)),
         }
@@ -518,7 +522,66 @@ fn every_documented_config_key_parses() {
     }
     toml.push_str("[params]\nanything = 1\n");
     crate::config::Config::parse(&toml).unwrap_or_else(|e| panic!("{e:#}\n{toml}"));
-    crate::config::Config::parse("title='t'\nbase_url='https://x.com'\n[deploy]\ntype='command'\ncommand='true'\n").unwrap();
+    // Each deploy key is documented as "type: …"; every key must parse under each type it names.
+    for ty in ["github", "git", "command"] {
+        let mut d = format!("title='t'\nbase_url='https://x.com'\n[deploy]\ntype = '{ty}'\n");
+        let mut n = 0;
+        for (key, k) in &deploy_keys {
+            let types = k.doc.split(':').next().unwrap_or("");
+            if types.split(',').any(|t| t.trim() == ty) {
+                d.push_str(&format!("{key} = {}\n", value(k)));
+                n += 1;
+            }
+        }
+        assert!(n > 0, "no documented keys for deploy type {ty}");
+        crate::config::Config::parse(&d).unwrap_or_else(|e| panic!("{e:#}\n{d}"));
+    }
+}
+
+#[test]
+fn new_blog_with_github_login_publishes_to_pages() {
+    let tmp = tempfile::tempdir().unwrap();
+    let dir = tmp.path().join("my-blog");
+    crate::new_blog(&dir, Some(("NinePointLabs", "my-blog", None))).unwrap();
+    let cfg = crate::config::Config::load(&dir).unwrap();
+    assert_eq!(cfg.base_url, "https://ninepointlabs.github.io/my-blog");
+    assert!(matches!(cfg.deploy, Some(crate::config::DeployConfig::Github { ref repo, ref domain, .. }) if repo == "my-blog" && domain.is_none()));
+    let dir2 = tmp.path().join("example.com");
+    crate::new_blog(&dir2, Some(("me", "example.com", Some("example.com")))).unwrap();
+    let cfg = crate::config::Config::load(&dir2).unwrap();
+    assert_eq!(cfg.base_url, "https://example.com");
+    assert!(matches!(cfg.deploy, Some(crate::config::DeployConfig::Github { domain: Some(ref d), .. }) if d == "example.com"));
+    // And the generated site passes check.
+    let rep = crate::check::check(&dir, None).unwrap();
+    assert!(rep.errors.is_empty(), "{:?}", rep.errors);
+}
+
+#[test]
+fn git_target_writes_cname_for_custom_domain() {
+    let b = Blog::new("");
+    b.write("posts/2024-01-01-a.md", "a");
+    let bare = b.dir.parent().unwrap().join("remote.git");
+    std::process::Command::new("git").args(["init", "-q", "--bare"]).arg(&bare).status().unwrap();
+    let out = b.build().unwrap();
+    let t = crate::deploy::GitTarget {
+        remote: bare.to_string_lossy().into(),
+        branch: "gh-pages".into(),
+        nojekyll: true,
+        author_name: "t".into(),
+        author_email: "t@x".into(),
+        env: vec![],
+        cname: Some("blog.example.com".into()),
+    };
+    use crate::deploy::Target;
+    t.deploy(&b.dir, &out).unwrap();
+    let show = std::process::Command::new("git").arg("--git-dir").arg(&bare).args(["show", "gh-pages:CNAME"]).output().unwrap();
+    assert_eq!(String::from_utf8_lossy(&show.stdout), "blog.example.com\n");
+    // Redeploying keeps it (GitHub would otherwise lose the custom domain).
+    b.write("posts/2024-01-02-b.md", "b");
+    let out = b.build().unwrap();
+    t.deploy(&b.dir, &out).unwrap();
+    let show = std::process::Command::new("git").arg("--git-dir").arg(&bare).args(["show", "gh-pages:CNAME"]).output().unwrap();
+    assert_eq!(String::from_utf8_lossy(&show.stdout), "blog.example.com\n");
 }
 
 #[test]
