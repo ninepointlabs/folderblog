@@ -112,10 +112,26 @@ pub fn serve(blog: &Path, port: u16, fixtures: Option<String>) -> Result<()> {
     }
 
     let server = tiny_http::Server::http(("127.0.0.1", port)).map_err(|e| anyhow::anyhow!("cannot listen on port {port}: {e}"))?;
-    log(format!("preview ({what} {}) at http://127.0.0.1:{port}/{label}", blog.display()));
+    // Sites under a subfolder (e.g. GitHub Pages project sites at /myblog/) are served
+    // under the same path, so their links work exactly as they will live.
+    let base_path = crate::config::Config::load(&blog).map(|c| c.base_path()).unwrap_or_default();
+    log(format!("preview ({what} {}) at http://127.0.0.1:{port}{base_path}/{label}", blog.display()));
     for req in server.incoming_requests() {
         let url = req.url().split(['?', '#']).next().unwrap_or("/").to_string();
         let url = percent_decode(&url);
+        let url = if base_path.is_empty() || url == VERSION_PATH {
+            url
+        } else if url == "/" || url == base_path {
+            let _ = req.respond(
+                tiny_http::Response::from_data(vec![]).with_status_code(302).with_header(header("Location", &format!("{base_path}/"))),
+            );
+            continue;
+        } else if let Some(rest) = url.strip_prefix(&format!("{base_path}/")) {
+            format!("/{rest}")
+        } else {
+            // Outside the site's path: what the live site would 404 on.
+            "/__outside_base_path__".into()
+        };
         let (version, error) = {
             let s = shared.lock().unwrap();
             (s.version, s.error.clone())
