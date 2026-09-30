@@ -41,18 +41,37 @@ pub fn html_escape(s: &str) -> String {
     o
 }
 
+const BLOCK_TAGS: &[&str] = &[
+    "p", "div", "br", "li", "ul", "ol", "h1", "h2", "h3", "h4", "h5", "h6", "tr", "td", "th", "table",
+    "blockquote", "pre", "figure", "figcaption", "section", "article", "hr", "dt", "dd", "dl", "img", "details", "summary",
+];
+
+/// Remove tags. Block-level tags become spaces so words don't run together; inline tags
+/// vanish so punctuation after `<em>x</em>,` stays attached.
 pub fn strip_tags(html: &str) -> String {
     let mut out = String::with_capacity(html.len());
+    let mut tag = String::new();
     let mut in_tag = false;
     for c in html.chars() {
         match c {
-            '<' => in_tag = true,
+            '<' => {
+                in_tag = true;
+                tag.clear();
+            }
             '>' if in_tag => {
                 in_tag = false;
-                out.push(' ');
+                let name: String = tag
+                    .trim_start_matches('/')
+                    .chars()
+                    .take_while(|c| c.is_ascii_alphanumeric())
+                    .collect::<String>()
+                    .to_ascii_lowercase();
+                if BLOCK_TAGS.contains(&name.as_str()) {
+                    out.push(' ');
+                }
             }
-            _ if !in_tag => out.push(c),
-            _ => {}
+            _ if in_tag => tag.push(c),
+            _ => out.push(c),
         }
     }
     let decoded = out
@@ -148,6 +167,12 @@ mod tests {
         assert_eq!(slugify("  Rust & Jinja  "), "rust-jinja");
         assert_eq!(slugify("Café au lait"), "café-au-lait");
         assert_eq!(slugify("my_file.name"), "my-file-name");
+    }
+
+    #[test]
+    fn strip_tags_keeps_punctuation() {
+        assert_eq!(strip_tags("<p>with <b>bold</b>, <em>it</em>.</p><p>Next</p>"), "with bold, it. Next");
+        assert_eq!(strip_tags("a &amp; b"), "a & b");
     }
 
     #[test]

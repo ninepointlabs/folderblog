@@ -99,10 +99,17 @@ pub fn command_docs() -> Vec<(String, String)> {
         .get_subcommands()
         .filter(|c| c.get_name() != "help")
         .map(|c| {
-            let args: Vec<String> = c
+            let mut args: Vec<String> = c
                 .get_positionals()
                 .map(|a| format!("[{}]", a.get_id().as_str().to_uppercase()))
                 .collect();
+            for a in c.get_opts() {
+                if let Some(l) = a.get_long() {
+                    let takes = a.get_num_args().is_some_and(|n| n.max_values() > 0);
+                    let v = a.get_value_names().and_then(|v| v.first()).map(|v| v.to_string()).unwrap_or_else(|| a.get_id().as_str().to_uppercase());
+                    args.push(if takes { format!("[--{l} {v}]") } else { format!("[--{l}]") });
+                }
+            }
             let name = if args.is_empty() { c.get_name().to_string() } else { format!("{} {}", c.get_name(), args.join(" ")) };
             (name, c.get_about().map(|a| a.to_string()).unwrap_or_default())
         })

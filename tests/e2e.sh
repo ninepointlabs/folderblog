@@ -77,6 +77,18 @@ wait_for 30 "second post to deploy" bash -c "git --git-dir='$T/alpha.test.git' s
 "$BIN" status --root "$ROOT"
 [ "$(head_of beta.test)" = "$B0" ] && echo "beta still untouched: $B0"
 
+step "preview live reload"
+"$BIN" preview "$ROOT/beta.test" --port 4199 > "$T/preview.log" 2>&1 &
+PREVIEW_PID=$!
+wait_for 30 "preview to serve" curl -sf http://127.0.0.1:4199/__folderblog/version
+V1=$(curl -s http://127.0.0.1:4199/__folderblog/version)
+echo "/* live reload */" >> "$ROOT/beta.test/theme/assets/style.css"
+wait_for 20 "preview to rebuild" bash -c "[ \"\$(curl -s http://127.0.0.1:4199/__folderblog/version)\" != '$V1' ]"
+curl -s http://127.0.0.1:4199/assets/style.css | grep -q "live reload" && echo "preview rebuilt after theme edit (version $V1 -> $(curl -s http://127.0.0.1:4199/__folderblog/version))"
+curl -s http://127.0.0.1:4199/ | grep -q "folderblog preview live reload" && echo "live-reload script injected in preview"
+! grep -rq "live reload" "$ROOT/beta.test/.blog/public/index.html" && echo "no live-reload script in real build output"
+kill $PREVIEW_PID
+
 step "watch log"
 cat "$T/watch.log"
 printf '\nE2E PASSED\n'

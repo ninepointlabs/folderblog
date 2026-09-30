@@ -104,8 +104,13 @@ fn run(cli: Cli) -> Result<i32> {
             let plan = site.plan()?;
             match url {
                 None => {
+                    use std::io::Write;
+                    let mut out = std::io::stdout().lock();
                     for o in &plan.outputs {
-                        println!("{}\t{}", o.url, o.origin);
+                        // Piping into `head` closes stdout early; that's not an error.
+                        if writeln!(out, "{}\t{}", o.url, o.origin).is_err() {
+                            break;
+                        }
                     }
                 }
                 Some(u) => {
@@ -118,7 +123,10 @@ fn run(cli: Cli) -> Result<i32> {
                         .find(|o| candidates.contains(&o.url))
                         .with_context(|| format!("no output at {want}; run `folderblog data` to list URLs"))?;
                     match &o.content {
-                        render::Content::Render { ctx, .. } => println!("{}", serde_json::to_string_pretty(ctx)?),
+                        render::Content::Render { ctx, .. } => {
+                            use std::io::Write;
+                            let _ = writeln!(std::io::stdout().lock(), "{}", serde_json::to_string_pretty(ctx)?);
+                        }
                         _ => bail!("{} is not rendered from a template ({})", o.url, o.origin),
                     }
                 }

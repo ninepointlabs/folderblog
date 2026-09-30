@@ -56,7 +56,11 @@ pub fn check(blog: &Path, fixtures: Option<String>) -> Result<Report> {
     // Internal links.
     let attr = Regex::new(r#"(?i)\s(?:href|src|poster)\s*=\s*(?:"([^"]*)"|'([^']*)')"#).unwrap();
     let mut broken = BTreeSet::new();
-    for o in &plan.outputs {
+    let render_failed = !rep.errors.is_empty();
+    if render_failed {
+        rep.warnings.push("broken-link check skipped until the errors below are fixed".into());
+    }
+    for o in plan.outputs.iter().filter(|_| !render_failed) {
         if !o.path.ends_with(".html") {
             continue;
         }

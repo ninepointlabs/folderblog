@@ -24,6 +24,10 @@ pub struct Markup<'a> {
     /// Which of the `_markup/*` templates exist in the theme.
     pub overrides: &'a HashSet<String>,
     pub site: Value,
+    /// The item being rendered: {slug, url, source, kind}. Lets overrides namespace ids.
+    pub item: Value,
+    /// Makes footnote ids unique when several items share a page.
+    pub slug: String,
 }
 
 /// Rewrites a URL reference found in the body (e.g. relative image paths) to a site URL.
@@ -97,6 +101,14 @@ pub fn render(
     let mut skipping_title: Option<Vec<Event>> = None;
     let mut plain = String::new();
     let mut in_code = false;
+    let mut current_fn: Option<String> = None;
+    let mut images = 0usize;
+    let fn_prefix = markup.map(|m| format!("fn-{}", m.slug)).unwrap_or_else(|| "fn".into());
+    let mut footnotes: HashMap<String, usize> = HashMap::new();
+    let fn_number = |label: &str, footnotes: &mut HashMap<String, usize>| -> usize {
+        let n = footnotes.len() + 1;
+        *footnotes.entry(label.to_string()).or_insert(n)
+    };
 
     let parser = Parser::new_ext(main_src, options());
     for ev in parser {
@@ -168,9 +180,35 @@ pub fn render(
             }
             Event::End(TagEnd::Heading(_) | TagEnd::Link | TagEnd::Image | TagEnd::CodeBlock) => {
                 let frame = stack.pop().ok_or_else(|| anyhow!("unbalanced markdown events"))?;
-                let html = finish_frame(frame, markup, &mut ids, &mut out.headings)?;
+                let html = finish_frame(frame, markup, &mut ids, &mut out.headings, &mut images)?;
                 in_code = false;
                 push(&mut stack, &mut events, Event::InlineHtml(CowStr::from(html)));
+            }
+            // Footnotes: ids carry the item slug so they stay unique when several items
+            // share a page, and each definition links back to its reference.
+            Event::FootnoteReference(label) => {
+                let n = fn_number(&label, &mut footnotes);
+                let id = slugify(&label);
+                let html = format!(
+                    "<sup class=\"footnote-ref\"><a href=\"#{fn_prefix}-{id}\" id=\"{fn_prefix}-ref-{id}\">{n}</a></sup>"
+                );
+                push(&mut stack, &mut events, Event::InlineHtml(CowStr::from(html)));
+            }
+            Event::Start(Tag::FootnoteDefinition(label)) => {
+                let n = fn_number(&label, &mut footnotes);
+                let id = slugify(&label);
+                let html = format!(
+                    "<div class=\"footnote\" id=\"{fn_prefix}-{id}\"><span class=\"footnote-number\">{n}</span>\n"
+                );
+                current_fn = Some(id);
+                push(&mut stack, &mut events, Event::Html(CowStr::from(html)));
+            }
+            Event::End(TagEnd::FootnoteDefinition) => {
+                let id = current_fn.take().unwrap_or_default();
+                let html = format!(
+                    "<a class=\"footnote-back\" href=\"#{fn_prefix}-ref-{id}\" aria-label=\"Back to reference\">↩</a></div>\n"
+                );
+                push(&mut stack, &mut events, Event::Html(CowStr::from(html)));
             }
             Event::Html(h) => {
                 let h = rewrite_attrs(&h, resolve);
@@ -262,8 +300,9 @@ fn render_override(markup: Option<&Markup>, name: &str, ctx: Value) -> Result<Op
         return Ok(None);
     }
     let tmpl = m.env.get_template(name)?;
-    let ctx = context! { site => m.site.clone(), ..ctx };
-    Ok(Some(tmpl.render(ctx)?))
+    let ctx = context! { site => m.site.clone(), item => m.item.clone(), ..ctx };
+    // Editors add a final newline; inside a paragraph it would become a stray space.
+    Ok(Some(tmpl.render(ctx)?.trim_end_matches(['\n', '\r']).to_string()))
 }
 
 fn finish_frame(
@@ -271,6 +310,7 @@ fn finish_frame(
     markup: Option<&Markup>,
     ids: &mut HashMap<String, usize>,
     headings: &mut Vec<Heading>,
+    images: &mut usize,
 ) -> Result<String> {
     Ok(match frame {
         Frame::Heading { level, id, classes, events } => {
@@ -313,7 +353,8 @@ fn finish_frame(
         }
         Frame::Image { dest, title, events } => {
             let alt = inner_text(&events);
-            let ctx = context! { url => dest.clone(), alt => alt.clone(), title => title.clone() };
+            *images += 1;
+            let ctx = context! { url => dest.clone(), alt => alt.clone(), title => title.clone(), index => *images };
             match render_override(markup, MARKUP_IMAGE, ctx)? {
                 Some(s) => s,
                 None => {
@@ -409,6 +450,8 @@ mod tests {
     fn tables_and_footnotes() {
         let out = r("x[^1]\n\n| a | b |\n|---|---|\n| 1 | 2 |\n\n[^1]: note\n");
         assert!(out.html.contains("<table>"));
-        assert!(out.html.contains("footnote"));
+        assert!(out.html.contains("<sup class=\"footnote-ref\"><a href=\"#fn-1\" id=\"fn-ref-1\">1</a></sup>"), "{}", out.html);
+        assert!(out.html.contains("<div class=\"footnote\" id=\"fn-1\">"), "{}", out.html);
+        assert!(out.html.contains("href=\"#fn-ref-1\""), "{}", out.html);
     }
 }

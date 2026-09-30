@@ -549,3 +549,70 @@ fn documented_markup_templates_are_the_ones_used() {
 fn exists(p: &Path) -> bool {
     p.exists()
 }
+
+// ---------- fixes from the theme-agent flexibility test ----------
+
+#[test]
+fn resolve_url_resolves_front_matter_paths() {
+    let b = Blog::new("");
+    b.write("posts/cover.svg", "<svg/>");
+    b.write("posts/trip/index.md", "---\ndate: 2024-02-03\ncover: hero.svg\n---\nx");
+    b.write("posts/trip/hero.svg", "<svg/>");
+    b.write("posts/2024-01-01-flat.md", "---\ncover: cover.svg\nlink: https://x.org/a.png\nabs: /y.png\n---\nx");
+    b.write(
+        "theme/_layouts/post.html",
+        "{{ post.meta.cover | resolve_url(post) }}|{{ post.meta.link | resolve_url(post) }}|{{ post.meta.abs | resolve_url(post) }}",
+    );
+    b.build().unwrap();
+    assert_eq!(b.read_out("2024/02/trip/index.html"), "/2024/02/trip/hero.svg||");
+    assert_eq!(b.read_out("2024/01/flat/index.html"), "/posts/cover.svg|https://x.org/a.png|/y.png");
+}
+
+#[test]
+fn markup_overrides_get_item_and_index_and_no_trailing_newline() {
+    let b = Blog::new("");
+    b.write("theme/_markup/image.html", "<span data-n=\"{{ index }}\" data-post=\"{{ item.slug }}\">{{ alt }}</span>\n");
+    b.write("theme/_markup/heading.html", "<h{{ level }} id=\"{{ item.slug }}--{{ id }}\">{{ html }}</h{{ level }}>\n");
+    b.write("posts/p.md", "Intro ![a](a.png), then ![b](b.png).\n\n## Part\n");
+    let s = b.site();
+    let h = &post(&s, "p").html;
+    assert!(h.contains("<span data-n=\"1\" data-post=\"p\">a</span>, then <span data-n=\"2\""), "{h}");
+    assert!(h.contains("id=\"p--part\""), "{h}");
+}
+
+#[test]
+fn footnote_ids_are_unique_per_item() {
+    let b = Blog::new("");
+    b.write("posts/one.md", "a[^n]\n\n[^n]: first");
+    b.write("posts/two.md", "b[^n]\n\n[^n]: second");
+    let s = b.site();
+    assert!(post(&s, "one").html.contains("id=\"fn-one-n\""));
+    assert!(post(&s, "two").html.contains("id=\"fn-two-n\""));
+    assert!(post(&s, "two").html.contains("href=\"#fn-two-ref-n\""));
+}
+
+#[test]
+fn summary_keeps_punctuation_attached() {
+    let b = Blog::new("");
+    b.write("posts/p.md", "With **bold**, *italic*, and `code`.");
+    let s = b.site();
+    assert_eq!(post(&s, "p").value.get_attr("summary").unwrap().to_string(), "With bold, italic, and code.");
+}
+
+#[test]
+fn merged_tag_slugs_warn() {
+    let b = Blog::new("");
+    b.write("posts/a.md", "---\ntags: [C++]\n---\nx");
+    b.write("posts/b.md", "---\ntags: [c]\n---\nx");
+    assert!(b.site().warnings.iter().any(|w| w.contains("share the slug")));
+}
+
+#[test]
+fn documented_tests_exist() {
+    let (_t, dir) = new_default_blog();
+    let site = Site::load(&dir, LoadOptions::default()).unwrap();
+    let ctx = std::collections::BTreeMap::new();
+    for t in crate::contract::TESTS {
+        assert_eq!(eval(&site, &ctx, &format!("{{{{ '{t}' is test }}}}")), "true", "test {t}");
+    }
+}

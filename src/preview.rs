@@ -69,6 +69,8 @@ pub fn serve(blog: &Path, port: u16, fixtures: Option<String>) -> Result<()> {
         log(format!("build failed:\n{e}"));
     }
 
+    let what = if fixtures.is_some() { "fixture content, theme of" } else { "drafts included," };
+    let label = fixtures.as_deref().map(|f| format!(" [fixtures: {f}]")).unwrap_or_default();
     // Rebuild on change.
     let (tx, rx) = mpsc::channel();
     let mut watcher = notify::recommended_watcher(tx)?;
@@ -82,16 +84,21 @@ pub fn serve(blog: &Path, port: u16, fixtures: Option<String>) -> Result<()> {
             let _watcher = watcher;
             loop {
                 let Ok(ev) = rx.recv() else { return };
+                // Access events are ignored: reading files (including blog.toml inside
+                // `relevant`) produces them, which would retrigger forever.
                 let hit = |ev: &notify::Result<notify::Event>| {
-                    ev.as_ref().map(|e| e.paths.iter().any(|p| crate::watch::relevant(&root, p).is_some())).unwrap_or(false)
+                    ev.as_ref()
+                        .map(|e| {
+                            !matches!(e.kind, notify::EventKind::Access(_))
+                                && e.paths.iter().any(|p| crate::watch::relevant(&root, p).is_some())
+                        })
+                        .unwrap_or(false)
                 };
                 if !hit(&ev) {
                     continue;
                 }
                 // Debounce: wait for a quiet period.
-                while let Ok(ev) = rx.recv_timeout(Duration::from_millis(250)) {
-                    let _ = hit(&ev);
-                }
+                while rx.recv_timeout(Duration::from_millis(250)).is_ok() {}
                 let res = build_preview(&blog, &out, &fixtures);
                 let mut s = shared.lock().unwrap();
                 s.version += 1;
@@ -105,7 +112,7 @@ pub fn serve(blog: &Path, port: u16, fixtures: Option<String>) -> Result<()> {
     }
 
     let server = tiny_http::Server::http(("127.0.0.1", port)).map_err(|e| anyhow::anyhow!("cannot listen on port {port}: {e}"))?;
-    log(format!("preview of {} at http://127.0.0.1:{port}/ (drafts included)", blog.display()));
+    log(format!("preview ({what} {}) at http://127.0.0.1:{port}/{label}", blog.display()));
     for req in server.incoming_requests() {
         let url = req.url().split(['?', '#']).next().unwrap_or("/").to_string();
         let url = percent_decode(&url);

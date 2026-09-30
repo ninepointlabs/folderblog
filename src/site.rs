@@ -107,7 +107,7 @@ impl Site {
             None => (blog_dir.clone(), State::load(&blog_dir, opts.persist_state)?),
         };
         let base_path = cfg.base_path();
-        let env = make_env(EnvSettings {
+        let mut env = make_env(EnvSettings {
             theme_dir: theme_dir.clone(),
             pages_dir: content_root.join("pages"),
             base_url: cfg.base_url.clone(),
@@ -116,7 +116,7 @@ impl Site {
         });
 
         let found = content::discover(&content_root, opts.drafts)?;
-        let warnings = found.warnings;
+        let mut warnings = found.warnings;
 
         // Pass 1: slugs, dates and routes, which the link resolver needs.
         struct Pre {
@@ -221,6 +221,7 @@ impl Site {
         let site_value = Self::site_value(&cfg, &base_path);
 
         // Pass 2: render bodies.
+        let mut src_dirs: HashMap<String, String> = HashMap::new();
         let mut posts = vec![];
         let mut pages = vec![];
         for (i, p) in pre.into_iter().enumerate() {
@@ -235,6 +236,7 @@ impl Site {
                 let s = source_site_path(p.src.kind, rel);
                 if s.ends_with('/') { s } else { format!("{s}/") }
             };
+            src_dirs.insert(p.src.rel.to_string_lossy().replace('\\', "/"), src_dir_site.clone());
             let resolver = |u: &str| -> String {
                 match resolve_relative(&src_dir_site, u) {
                     Some(abs) => {
@@ -253,7 +255,19 @@ impl Site {
             };
             let (title, html, excerpt, plain, raw, headings, has_more) = match &p.src.body {
                 Body::Markdown(text) => {
-                    let markup = Markup { env: &env, overrides: &overrides, site: site_value.clone() };
+                    let item_ctx = Value::from_serialize(BTreeMap::from([
+                        ("slug", p.slug.clone()),
+                        ("url", prefix_base(&base_path, &p.route)),
+                        ("source", p.src.rel.to_string_lossy().replace('\\', "/")),
+                        ("kind", if p.src.kind == Kind::Post { "post".into() } else { "page".into() }),
+                    ]));
+                    let markup = Markup {
+                        env: &env,
+                        overrides: &overrides,
+                        site: site_value.clone(),
+                        item: item_ctx,
+                        slug: p.slug.clone(),
+                    };
                     let r = markdown::render(text, fm_title.is_none(), Some(&markup), &resolver)
                         .with_context(|| format!("rendering {}", p.src.rel.display()))?;
                     let excerpt = match p.src.front.get("excerpt").or(p.src.front.get("summary")).and_then(|v| v.as_str()) {
@@ -287,6 +301,46 @@ impl Site {
             match item.src.kind {
                 Kind::Post => posts.push(item),
                 Kind::Page => pages.push(item),
+            }
+        }
+        // `{{ post.meta.cover | resolve_url(post) }}`: resolve a path written in front matter
+        // exactly like a path written in the body.
+        {
+            let published = published.clone();
+            let base_path = base_path.clone();
+            env.add_filter("resolve_url", move |v: String, item: Value| -> String {
+                let source = item.get_attr("source").ok().map(|s| s.to_string()).unwrap_or_default();
+                let dir = src_dirs.get(&source).cloned().unwrap_or_else(|| "/".into());
+                match resolve_relative(&dir, &v) {
+                    Some(abs) => {
+                        let (path, suffix) = match abs.find(['?', '#']) {
+                            Some(i) => (&abs[..i], &abs[i..]),
+                            None => (abs.as_str(), ""),
+                        };
+                        match published.get(path) {
+                            Some(url) => format!("{url}{suffix}"),
+                            None => prefix_base(&base_path, &abs),
+                        }
+                    }
+                    None if v.starts_with('/') && !v.starts_with("//") => prefix_base(&base_path, &v),
+                    None => v,
+                }
+            });
+        }
+        let mut slug_names: BTreeMap<String, String> = BTreeMap::new();
+        for p in &posts {
+            for t in &p.tags {
+                let slug = slugify(t);
+                match slug_names.get(&slug) {
+                    Some(prev) if prev != t => warnings.push(format!(
+                        "tags {prev:?} and {t:?} share the slug {slug:?} and are merged into one tag ({})",
+                        p.src.rel.display()
+                    )),
+                    None => {
+                        slug_names.insert(slug, t.clone());
+                    }
+                    _ => {}
+                }
             }
         }
         posts.sort_by(|a, b| {

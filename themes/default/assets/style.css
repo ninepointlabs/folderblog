@@ -72,9 +72,7 @@ th { font-weight: 700; }
 .tags a:hover { color: var(--accent); }
 .neighbours, .pager { display: flex; justify-content: space-between; gap: 1rem; margin-top: 2.5rem; font-size: .92rem; }
 .draft { font-size: .7rem; text-transform: uppercase; letter-spacing: .08em; background: var(--accent); color: var(--bg); padding: .1em .4em; border-radius: 3px; vertical-align: middle; }
-.footnotes, .footnote-definition { font-size: .88rem; color: var(--muted); }
-.footnote-definition { display: flex; gap: .5rem; }
-.footnote-definition p { margin: 0; }
+.footnote { font-size: .88rem; color: var(--muted); display: flex; gap: .5rem; }
 .site-footer { border-top: 1px solid var(--rule); margin-top: 4rem; padding: 1.5rem 0 3rem; color: var(--muted); font-size: .88rem; }
 .site-footer a { color: var(--muted); }
 @media (max-width: 34rem) {
