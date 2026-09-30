@@ -331,12 +331,22 @@ pub fn ensure_pages(owner: &str, repo: &str, branch: &str, domain: Option<&str>)
         200 => j,
         404 => {
             let (s, j) = api("POST", &path, Some(json!({"build_type": "legacy", "source": {"branch": branch, "path": "/"}})))?;
-            // 409: GitHub already enabled Pages on its own when the gh-pages branch appeared.
-            if s != 201 && s != 409 {
-                return Err(fail("enabling Pages", s, &j));
-            }
             enabled = s == 201;
-            api("GET", &path, None)?.1
+            // GitHub turns Pages on by itself when a gh-pages branch first appears, and a
+            // request racing that returns 409 or even 500. Give it a moment and look again.
+            let mut found = None;
+            for attempt in 0..10 {
+                let (gs, gj) = api("GET", &path, None)?;
+                if gs == 200 {
+                    found = Some(gj);
+                    break;
+                }
+                if attempt == 9 {
+                    return Err(fail("enabling Pages", s, &j));
+                }
+                std::thread::sleep(Duration::from_secs(3));
+            }
+            found.unwrap()
         }
         _ => return Err(fail("reading Pages settings", s, &j)),
     };
