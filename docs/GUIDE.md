@@ -50,28 +50,28 @@ asked for your password. That is normal.
 **Arch Linux, Omarchy or Manjaro:**
 
 ```sh
-curl -LO https://github.com/ninepointlabs/folderblog/releases/latest/download/folderblog-bin-0.2.0-1-x86_64.pkg.tar.zst
-sudo pacman -U folderblog-bin-0.2.0-1-x86_64.pkg.tar.zst
+curl -LO https://github.com/ninepointlabs/folderblog/releases/latest/download/folderblog-bin-0.2.1-1-x86_64.pkg.tar.zst
+sudo pacman -U folderblog-bin-0.2.1-1-x86_64.pkg.tar.zst
 ```
 
 **Debian, Ubuntu, Pop!_OS or Mint:**
 
 ```sh
-curl -LO https://github.com/ninepointlabs/folderblog/releases/latest/download/folderblog_0.2.0-1_amd64.deb
-sudo apt install ./folderblog_0.2.0-1_amd64.deb
+curl -LO https://github.com/ninepointlabs/folderblog/releases/latest/download/folderblog_0.2.1-1_amd64.deb
+sudo apt install ./folderblog_0.2.1-1_amd64.deb
 ```
 
 **Fedora, RHEL or openSUSE:**
 
 ```sh
-sudo dnf install https://github.com/ninepointlabs/folderblog/releases/latest/download/folderblog-0.2.0-1.x86_64.rpm
+sudo dnf install https://github.com/ninepointlabs/folderblog/releases/latest/download/folderblog-0.2.1-1.x86_64.rpm
 ```
 
 **Any other Linux:**
 
 ```sh
-curl -L https://github.com/ninepointlabs/folderblog/releases/latest/download/folderblog-0.2.0-x86_64-linux.tar.gz | tar xz
-sudo install -Dm755 folderblog-0.2.0-x86_64-linux/folderblog /usr/local/bin/folderblog
+curl -L https://github.com/ninepointlabs/folderblog/releases/latest/download/folderblog-0.2.1-x86_64-linux.tar.gz | tar xz
+sudo install -Dm755 folderblog-0.2.1-x86_64-linux/folderblog /usr/local/bin/folderblog
 ```
 
 Now check that it worked:
@@ -80,7 +80,7 @@ Now check that it worked:
 folderblog --version
 ```
 
-It should say `folderblog 0.2.0` (or a newer number).
+It should say `folderblog 0.2.1` (or a newer number).
 
 folderblog also needs a program called `git`. Most computers already have it. To pop up
 little messages on your screen, it uses `notify-send`, which most computers also have.

@@ -1,7 +1,7 @@
 # Maintainer: Tim <tim@ninepointlabs.com>
 # Binary package built from the release tarball (static x86_64 build).
 pkgname=folderblog-bin
-pkgver=0.2.0
+pkgver=0.2.1
 pkgrel=1
 pkgdesc="A folder is a blog: save Markdown, it goes live (GitHub Pages, git, rsync...)"
 arch=('x86_64')
