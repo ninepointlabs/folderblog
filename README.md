@@ -1,5 +1,9 @@
 # folderblog
 
+> **New to folderblog? Start with [the step-by-step guide](docs/GUIDE.md).** It explains
+> everything folderblog can do and every command, in plain words. The same guide is
+> built in: run `folderblog guide`, or `man folderblog`.
+
 **A folder is a blog.** Write a Markdown file, save it into a folder, and a few seconds
 later it is live on your site. No front matter, no build step, no commit, no deploy
 command.
@@ -486,6 +490,8 @@ folderblog only publishes when the built site actually changed.
 | `folderblog data [URL]` | Template context for a page (or list all pages) |
 | `folderblog gallery [on\|off] [BLOG]` | Turn the photo gallery on or off (adds `gallery/` and its templates) |
 | `folderblog agents-md [BLOG] [--write]` | Refresh the blog's AGENTS.md |
+| `folderblog guide` | The step-by-step guide to everything ([docs/GUIDE.md](docs/GUIDE.md)) |
+| `folderblog man` | The same guide as a manual page (`man folderblog` once installed) |
 
 `BLOG` defaults to the current folder. `FOLDERBLOG_ROOT` or `--root` changes `~/Blogs`.
 

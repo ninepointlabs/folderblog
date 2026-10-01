@@ -2,7 +2,12 @@ use clap::{CommandFactory, Parser, Subcommand};
 use std::path::PathBuf;
 
 #[derive(Parser)]
-#[command(name = "folderblog", version, about = "A folder is a blog: save Markdown, it goes live.")]
+#[command(
+    name = "folderblog",
+    version,
+    about = "A folder is a blog: save Markdown, it goes live.",
+    after_help = "New here? `folderblog guide` walks you through everything, step by step (also: `man folderblog`).\nAdd --help after any command for its details, e.g. `folderblog new --help`.\nBLOG is a blog's folder; leave it out to use the folder you are in."
+)]
 pub struct Cli {
     #[command(subcommand)]
     pub cmd: Cmd,
@@ -14,6 +19,7 @@ pub enum Cmd {
     New {
         /// Blog name (usually its domain), created under the root; or a path
         name: String,
+        /// The folder that holds your blogs (default: ~/Blogs)
         #[arg(long, env = "FOLDERBLOG_ROOT")]
         root: Option<PathBuf>,
         /// Serve the GitHub Pages site at this custom domain (you add the DNS records)
@@ -37,33 +43,40 @@ pub enum Cmd {
     },
     /// Forget the stored GitHub login
     Logout {
+        /// Only `github` is supported
         #[arg(default_value = "github")]
         service: String,
     },
     /// Build the blog into .blog/public (or --out) without deploying
     Build {
+        /// The blog's folder (default: the folder you are in)
         blog: Option<PathBuf>,
+        /// Build into this folder instead of the blog's .blog/public
         #[arg(long)]
         out: Option<PathBuf>,
         /// Include drafts
         #[arg(long)]
         drafts: bool,
-        /// Build against a fixture content set instead of the blog's content
+        /// Build sample content (stress, empty or one) instead of the blog's own posts
         #[arg(long)]
         fixtures: Option<String>,
     },
     /// Serve a live-reloading local preview, drafts included
     Preview {
+        /// The blog's folder (default: the folder you are in)
         blog: Option<PathBuf>,
+        /// Serve at http://127.0.0.1:PORT
         #[arg(long, default_value_t = 4000)]
         port: u16,
-        /// Render the theme against fixture content (stress, empty, one)
+        /// Show the theme with sample content (stress, empty or one; alone: stress)
         #[arg(long, num_args = 0..=1, default_missing_value = "stress")]
         fixtures: Option<String>,
     },
     /// Render everything and report template errors, feed problems, broken links, collisions
     Check {
+        /// The blog's folder (default: the folder you are in)
         blog: Option<PathBuf>,
+        /// Check the theme against sample content (stress, empty or one; alone: stress)
         #[arg(long, num_args = 0..=1, default_missing_value = "stress")]
         fixtures: Option<String>,
     },
@@ -71,6 +84,7 @@ pub enum Cmd {
     Data {
         url: Option<String>,
         #[arg(long)]
+        /// The blog's folder (default: the folder you are in)
         blog: Option<PathBuf>,
         #[arg(long)]
         drafts: bool,
@@ -79,11 +93,13 @@ pub enum Cmd {
     },
     /// Watch every blog under the root; rebuild and deploy on change
     Watch {
+        /// The folder that holds your blogs (default: ~/Blogs)
         #[arg(long, env = "FOLDERBLOG_ROOT")]
         root: Option<PathBuf>,
     },
     /// Build and deploy a blog now
     Deploy {
+        /// The blog's folder (default: the folder you are in)
         blog: Option<PathBuf>,
         /// Deploy even if the output is unchanged since the last deploy
         #[arg(long)]
@@ -91,6 +107,7 @@ pub enum Cmd {
     },
     /// Show build/deploy status for every blog under the root
     Status {
+        /// The folder that holds your blogs (default: ~/Blogs)
         #[arg(long, env = "FOLDERBLOG_ROOT")]
         root: Option<PathBuf>,
         /// Machine-readable output
@@ -99,6 +116,7 @@ pub enum Cmd {
     },
     /// Install (and start) the systemd user service that runs `watch`
     InstallService {
+        /// The folder that holds your blogs (default: ~/Blogs)
         #[arg(long, env = "FOLDERBLOG_ROOT")]
         root: Option<PathBuf>,
         /// Only write the unit file; do not enable or start it
@@ -110,16 +128,24 @@ pub enum Cmd {
     },
     /// Turn the photo gallery on or off; on adds gallery/ and the gallery templates (no argument: show its state)
     Gallery {
+        /// `on` or `off` (leave out to see whether the gallery is on)
         #[arg(value_parser = ["on", "off"])]
         state: Option<String>,
+        /// The blog's folder (default: the folder you are in)
         blog: Option<PathBuf>,
     },
     /// Regenerate the contract section of the blog's AGENTS.md (prints it without --write)
     AgentsMd {
+        /// The blog's folder (default: the folder you are in)
         blog: Option<PathBuf>,
+        /// Save it into AGENTS.md (keeps anything written outside the generated part)
         #[arg(long)]
         write: bool,
     },
+    /// Show the step-by-step guide to everything folderblog does
+    Guide,
+    /// Show the guide as a manual page (piped: print the roff source, e.g. `> folderblog.1`)
+    Man,
 }
 
 /// (name, about) for every subcommand, as documented in AGENTS.md.

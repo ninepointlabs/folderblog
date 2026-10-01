@@ -9,6 +9,7 @@ mod feed;
 mod fixtures;
 mod gallery;
 mod github;
+mod manpage;
 mod markdown;
 mod preview;
 mod render;
@@ -228,6 +229,14 @@ fn run(cli: Cli) -> Result<i32> {
             Ok(if bad { 1 } else { 0 })
         }
         Cmd::InstallService { root, no_start, print } => install_service(&default_root(root), no_start, print),
+        Cmd::Guide => {
+            manpage::show(manpage::GUIDE, "less", &["-R"])?;
+            Ok(0)
+        }
+        Cmd::Man => {
+            manpage::show(&manpage::render(), "man", &["-l", "-"])?;
+            Ok(0)
+        }
         Cmd::Gallery { state, blog } => gallery_cmd(&blog_dir(blog)?, state.as_deref()),
         Cmd::AgentsMd { blog, write } => {
             let blog = blog_dir(blog)?;

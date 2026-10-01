@@ -18,9 +18,14 @@ CC_x86_64_unknown_linux_musl=clang cargo build --release --locked --target "$TAR
 BIN="target/$TARGET/release/folderblog"
 file "$BIN" | grep -q "static" || { echo "binary is not static"; exit 1; }
 
+echo "== man page"
+mkdir -p target/man
+"$BIN" man > target/man/folderblog.1
+gzip -9 -n -f -k target/man/folderblog.1
+
 echo "== tarball"
 mkdir -p "dist/$NAME"
-cp "$BIN" packaging/folderblog.service README.md LICENSE "dist/$NAME/"
+cp "$BIN" packaging/folderblog.service README.md docs/GUIDE.md LICENSE target/man/folderblog.1 "dist/$NAME/"
 tar -C dist -czf "dist/$NAME.tar.gz" "$NAME"
 
 echo "== deb"

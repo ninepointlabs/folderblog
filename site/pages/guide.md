@@ -4,7 +4,7 @@ description: Install folderblog, connect GitHub once, and start publishing.
 weight: 1
 ---
 
-This is the short version. The [README](https://github.com/ninepointlabs/folderblog#readme) has every detail, and every blog's own `AGENTS.md` documents theming completely.
+This is the short version. The [full step-by-step guide](https://github.com/ninepointlabs/folderblog/blob/main/docs/GUIDE.md) explains every feature and every command in plain words (it's also built in: `folderblog guide` or `man folderblog`). The [README](https://github.com/ninepointlabs/folderblog#readme) has the technical details, and every blog's own `AGENTS.md` documents theming completely.
 
 ## 1. Install
 
