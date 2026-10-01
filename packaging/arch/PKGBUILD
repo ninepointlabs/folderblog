@@ -1,7 +1,7 @@
 # Maintainer: Tim <tim@ninepointlabs.com>
 # Binary package built from the release tarball (static x86_64 build).
 pkgname=folderblog-bin
-pkgver=0.1.0
+pkgver=0.2.0
 pkgrel=1
 pkgdesc="A folder is a blog: save Markdown, it goes live (GitHub Pages, git, rsync...)"
 arch=('x86_64')
@@ -20,5 +20,7 @@ package() {
   install -Dm755 folderblog "${pkgdir}/usr/bin/folderblog"
   install -Dm644 folderblog.service "${pkgdir}/usr/lib/systemd/user/folderblog.service"
   install -Dm644 README.md "${pkgdir}/usr/share/doc/folderblog/README.md"
+  install -Dm644 GUIDE.md "${pkgdir}/usr/share/doc/folderblog/GUIDE.md"
+  install -Dm644 folderblog.1 "${pkgdir}/usr/share/man/man1/folderblog.1"
   install -Dm644 LICENSE "${pkgdir}/usr/share/licenses/folderblog/LICENSE"
 }

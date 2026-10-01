@@ -27,6 +27,8 @@ pub struct Config {
     #[serde(default)]
     pub watch: WatchConfig,
     #[serde(default)]
+    pub gallery: GalleryConfig,
+    #[serde(default)]
     pub deploy: Option<DeployConfig>,
     #[serde(default)]
     pub params: toml::Table,
@@ -60,6 +62,23 @@ pub struct WatchConfig {
     /// Paths (relative to the blog folder, prefix match) whose changes never trigger a rebuild.
     #[serde(default)]
     pub ignore: Vec<String>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct GalleryConfig {
+    /// Publish every picture in gallery/ as a photo gallery.
+    #[serde(default)]
+    pub enabled: bool,
+    /// Where the gallery lives on the site, e.g. "/gallery/" or "/photos/".
+    #[serde(default = "default_gallery_url")]
+    pub url: String,
+}
+
+impl Default for GalleryConfig {
+    fn default() -> Self {
+        GalleryConfig { enabled: false, url: default_gallery_url() }
+    }
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -102,6 +121,9 @@ fn default_permalink() -> String {
 fn default_feed_limit() -> usize {
     20
 }
+fn default_gallery_url() -> String {
+    "/gallery/".into()
+}
 fn default_branch() -> String {
     "gh-pages".into()
 }
@@ -133,6 +155,11 @@ impl Config {
         if !cfg.permalink.starts_with('/') || !cfg.permalink.contains("{slug}") {
             bail!("permalink must start with / and contain {{slug}} (got {:?})", cfg.permalink);
         }
+        let g = cfg.gallery.url.trim().trim_matches('/');
+        if g.is_empty() || g.contains("..") || g.contains(['?', '#']) {
+            bail!("gallery.url must be a path like \"/gallery/\" (got {:?})", cfg.gallery.url);
+        }
+        cfg.gallery.url = format!("/{g}/");
         Ok(cfg)
     }
 
@@ -179,6 +206,11 @@ permalink = "/{{year}}/{{month}}/{{slug}}/"
 
 [feed]
 limit = 20
+
+# Photo gallery: every picture in gallery/ (subfolders are albums). Or run `folderblog gallery on`.
+# [gallery]
+# enabled = true
+# url = "/gallery/"
 
 # Optional toolchain hooks, run with the blog folder as working directory.
 # Post-build hooks get $FOLDERBLOG_OUT (the fresh build directory) and may modify it.

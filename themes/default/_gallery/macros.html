@@ -1,0 +1,23 @@
+{# Shared pieces of the gallery pages. Restyle freely: the engine only supplies the data. #}
+
+{% macro grid(photos) %}
+<div class="gallery-grid" data-gallery>
+  {% for p in photos %}
+  <a class="gallery-tile" href="{{ p.url }}" style="--r: {{ p.ratio }}" data-image="{{ p.image }}" data-title="{{ p.title }}" data-caption="{{ p.caption | plaintext }}">
+    <img src="{{ p.thumb }}" width="{{ p.thumb_width }}" height="{{ p.thumb_height }}" alt="{{ p.alt }}" loading="{% if loop.index > 12 %}lazy{% else %}eager{% endif %}" decoding="async">
+    {% if p.title %}<span class="gallery-tile-title">{{ p.title }}</span>{% endif %}
+    {% if p.draft %}<span class="gallery-draft">draft</span>{% endif %}
+  </a>
+  {% endfor %}
+</div>
+{% endmacro %}
+
+{% macro tag_chips(list, current="") %}
+{% if list %}
+<nav class="gallery-tags" aria-label="Photo tags">
+  {% for t in list %}<a href="{{ t.url }}"{% if t.slug == current %} aria-current="page"{% endif %}>#{{ t.name }}{% if t.count %} <small>{{ t.count }}</small>{% endif %}</a>{% endfor %}
+</nav>
+{% endif %}
+{% endmacro %}
+
+{% macro count(n) %}{{ n }} photo{{ n | pluralize }}{% endmacro %}

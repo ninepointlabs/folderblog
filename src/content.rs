@@ -43,6 +43,8 @@ pub struct Source {
 pub enum DateSource {
     FrontMatter,
     Filename,
+    /// Gallery photos: when the camera says it was taken.
+    Exif,
     FirstSeen,
 }
 

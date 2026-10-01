@@ -4,7 +4,7 @@ description: Install folderblog, connect GitHub once, and start publishing.
 weight: 1
 ---
 
-This is the short version. The [README](https://github.com/ninepointlabs/folderblog#readme) has every detail, and every blog's own `AGENTS.md` documents theming completely.
+This is the short version. The [full step-by-step guide](https://github.com/ninepointlabs/folderblog/blob/main/docs/GUIDE.md) explains every feature and every command in plain words (it's also built in: `folderblog guide` or `man folderblog`). The [README](https://github.com/ninepointlabs/folderblog#readme) has the technical details, and every blog's own `AGENTS.md` documents theming completely.
 
 ## 1. Install
 
@@ -55,6 +55,25 @@ For your own domain: `folderblog new example.com --domain example.com` prints th
 - Delete a file to unpublish it.
 
 Front matter is optional: `title`, `date`, `tags`, `layout` and anything else you like, which themes can read.
+
+### A photo gallery
+
+```sh
+folderblog gallery on
+```
+
+Drop pictures into `gallery/` and they appear at `/gallery/`. A folder inside it is an album. To add a title, caption and tags, put a Markdown file with the same name beside the photo (`sunset.md` next to `sunset.jpg`):
+
+```markdown
+---
+tags: [sea, evenings]
+---
+# Sunset over the bay
+
+The whole sky went orange for about ten minutes.
+```
+
+Only resized copies are published, never your originals, so the GPS location in your phone's photos stays private.
 
 ## 5. Make it yours
 

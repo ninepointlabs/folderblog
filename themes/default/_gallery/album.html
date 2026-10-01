@@ -1,0 +1,19 @@
+{% extends "_layouts/base.html" %}
+{% from "_gallery/macros.html" import grid, tag_chips, count %}
+{% block title %}{{ album.title }} · {{ gallery.title }} · {{ site.title }}{% endblock %}
+{% block description %}{{ album.description | plaintext or album.title }}{% endblock %}
+{% block head %}<meta property="og:image" content="{{ album.cover.image | absolute_url }}">{% endblock %}
+{% block main %}
+<style>{% include "_gallery/gallery.css" %}</style>
+<div class="gallery">
+  <header class="gallery-head">
+    <p class="gallery-crumbs"><a href="{{ gallery.url }}">{{ gallery.title }}</a></p>
+    <h1>{{ album.title }}</h1>
+    {% if album.description %}<div class="gallery-intro">{{ album.description }}</div>{% endif %}
+    <p class="gallery-meta">{{ count(album.count) }}{% if album.date %} · <time datetime="{{ album.date }}">{{ album.date | date("%B %-d, %Y") }}</time>{% endif %}</p>
+    {{ tag_chips(album.tags) }}
+  </header>
+  {{ grid(album.photos) }}
+</div>
+<script>{% include "_gallery/gallery.js" %}</script>
+{% endblock %}

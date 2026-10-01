@@ -1,0 +1,18 @@
+{% extends "_layouts/base.html" %}
+{% from "_gallery/macros.html" import grid, tag_chips, count %}
+{% block title %}#{{ tag.name }} · {{ gallery.title }} · {{ site.title }}{% endblock %}
+{% block description %}Photos tagged #{{ tag.name }}{% endblock %}
+{% block main %}
+<style>{% include "_gallery/gallery.css" %}</style>
+<div class="gallery">
+  <header class="gallery-head">
+    <p class="gallery-crumbs"><a href="{{ gallery.url }}">{{ gallery.title }}</a></p>
+    <h1>#{{ tag.name }}</h1>
+    <p class="gallery-meta">{{ count(tag.count) }}
+      {%- for t in tags if t.slug == tag.slug %} · <a href="{{ ('/tags/' ~ t.slug ~ '/') | url }}">{{ t.count }} post{{ t.count | pluralize }} tagged #{{ t.name }}</a>{% endfor %}</p>
+  </header>
+  {{ tag_chips(gallery.tags, tag.slug) }}
+  {{ grid(tag.photos) }}
+</div>
+<script>{% include "_gallery/gallery.js" %}</script>
+{% endblock %}

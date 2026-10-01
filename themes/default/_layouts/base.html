@@ -15,6 +15,7 @@
   <a class="site-title" href="{{ site.url }}">{{ site.title }}</a>
   <nav>
     {% for p in pages %}<a href="{{ p.url }}"{% if p.url == current_url %} aria-current="page"{% endif %}>{{ p.title }}</a>{% endfor %}
+    {% if gallery.enabled and gallery.count %}<a href="{{ gallery.url }}"{% if current_url.startswith(gallery.url) %} aria-current="page"{% endif %}>{{ gallery.title }}</a>{% endif %}
     <a href="{{ '/archive/' | url }}">Archive</a>
     <a href="{{ site.feed_url }}">RSS</a>
   </nav>

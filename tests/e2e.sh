@@ -10,6 +10,8 @@ cargo build -q
 BIN="$PWD/target/debug/folderblog"
 export FOLDERBLOG_NO_NOTIFY=1
 T="$(mktemp -d)"
+# Never see the developer's own GitHub login: blogs here deploy to local bare repos.
+export XDG_CONFIG_HOME="$T/config"
 ROOT="$T/Blogs"
 trap 'kill $WATCH_PID 2>/dev/null || true; rm -rf "$T"' EXIT
 
@@ -76,6 +78,19 @@ cp "$T/post.html.bak" "$ROOT/alpha.test/theme/_layouts/post.html"
 wait_for 30 "second post to deploy" bash -c "git --git-dir='$T/alpha.test.git' show gh-pages:feed.xml | grep -q 'Second post'"
 "$BIN" status --root "$ROOT"
 [ "$(head_of beta.test)" = "$B0" ] && echo "beta still untouched: $B0"
+
+step "turn on beta's gallery and drop a photo into it"
+"$BIN" gallery on "$ROOT/beta.test" > /dev/null
+mkdir -p "$ROOT/beta.test/gallery/trip"
+printf -- '---\ntags: [sea]\n---\n# Calm water\n' > "$ROOT/beta.test/gallery/trip/calm.md"
+cp fixtures/stress/gallery/2024-03-02-harbour-at-dawn.jpg "$ROOT/beta.test/gallery/trip/calm.jpg.part"
+mv "$ROOT/beta.test/gallery/trip/calm.jpg.part" "$ROOT/beta.test/gallery/trip/calm.jpg"
+wait_for 30 "photo page to deploy" bash -c "git --git-dir='$T/beta.test.git' show gh-pages:gallery/trip/calm/index.html | grep -q 'Calm water'"
+show beta.test gallery/index.html | grep -o 'href="/gallery/trip/"' | head -1
+show beta.test gallery/tags/sea/index.html | grep -o '#sea' | head -1
+show beta.test index.html | grep -o '<a href="/gallery/">[^<]*</a>' && echo "nav links to the gallery"
+git --git-dir="$T/beta.test.git" ls-tree -r --name-only gh-pages | grep -E '^gallery/trip/calm\.(thumb\.)?jpg$'
+if git --git-dir="$T/beta.test.git" ls-tree -r --name-only gh-pages | grep -E '\.part$'; then echo "FAIL: partial download published"; exit 1; fi
 
 step "preview live reload"
 "$BIN" preview "$ROOT/beta.test" --port 4199 > "$T/preview.log" 2>&1 &
