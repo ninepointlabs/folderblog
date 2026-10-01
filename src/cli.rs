@@ -108,6 +108,12 @@ pub enum Cmd {
         #[arg(long)]
         print: bool,
     },
+    /// Turn the photo gallery on or off; on adds gallery/ and the gallery templates (no argument: show its state)
+    Gallery {
+        #[arg(value_parser = ["on", "off"])]
+        state: Option<String>,
+        blog: Option<PathBuf>,
+    },
     /// Regenerate the contract section of the blog's AGENTS.md (prints it without --write)
     AgentsMd {
         blog: Option<PathBuf>,

@@ -155,6 +155,10 @@ impl Site {
             });
         }
 
+        if let Some(g) = &self.gallery {
+            self.plan_gallery(g, &mut outputs, &mut errors);
+        }
+
         // static/: copied untouched.
         let static_dir = self.blog_dir.join("static");
         for (abs, rel) in walk_files(&static_dir)? {
@@ -228,6 +232,56 @@ impl Site {
             }
         }
         Ok(Plan { outputs, errors })
+    }
+
+    fn plan_gallery(&self, g: &crate::gallery::Gallery, outputs: &mut Vec<Output>, errors: &mut Vec<String>) {
+        let missing: Vec<&str> = crate::gallery::TEMPLATES.iter().copied().filter(|t| !self.theme_dir.join(t).is_file()).collect();
+        if !missing.is_empty() {
+            errors.push(format!(
+                "the gallery is on but theme/{} {} missing; run `folderblog gallery on` to add the gallery templates",
+                missing.join(", theme/"),
+                if missing.len() == 1 { "is" } else { "are" }
+            ));
+            return;
+        }
+        let gv = &self.gallery_values;
+        let page = |route: &str, template: &str, name: &str, value: &Value, origin: String, lastmod: Option<String>| {
+            let mut ctx = self.base_ctx(route, template);
+            ctx.insert("item".into(), value.clone());
+            ctx.insert(name.into(), value.clone());
+            Output {
+                path: url_to_file(route),
+                url: prefix_base(&self.base_path, route),
+                origin,
+                content: Content::Render { template: template.into(), ctx },
+                lastmod,
+            }
+        };
+        let src = crate::gallery::GALLERY_DIR;
+        outputs.push(page(&g.route, "_gallery/index.html", "gallery", &gv.root, format!("{src}/ (via theme/_gallery/index.html)"), None));
+        for (a, v) in g.albums.iter().zip(&gv.albums) {
+            outputs.push(page(&a.route, "_gallery/album.html", "album", v, format!("{} (via theme/_gallery/album.html)", a.source), None));
+        }
+        for (route, v) in &gv.tags {
+            outputs.push(page(route, "_gallery/tag.html", "tag", v, format!("{src}/ tag (via theme/_gallery/tag.html)"), None));
+        }
+        for (p, v) in g.photos.iter().zip(&gv.photos) {
+            let origin = format!("{} (via theme/_gallery/photo.html)", p.source);
+            outputs.push(page(&p.route, "_gallery/photo.html", "photo", v, origin, Some(p.date.to_rfc3339())));
+            let mut files = vec![(&p.image_route, &p.image_file)];
+            if p.thumb_route != p.image_route {
+                files.push((&p.thumb_route, &p.thumb_file));
+            }
+            for (route, file) in files {
+                outputs.push(Output {
+                    path: route.trim_start_matches('/').to_string(),
+                    url: prefix_base(&self.base_path, route),
+                    origin: p.source.clone(),
+                    content: Content::Copy(file.clone()),
+                    lastmod: None,
+                });
+            }
+        }
     }
 
     fn expand_route(&self, rel: &str, spec: RouteSpec) -> Result<Vec<Output>> {

@@ -56,6 +56,25 @@ For your own domain: `folderblog new example.com --domain example.com` prints th
 
 Front matter is optional: `title`, `date`, `tags`, `layout` and anything else you like, which themes can read.
 
+### A photo gallery
+
+```sh
+folderblog gallery on
+```
+
+Drop pictures into `gallery/` and they appear at `/gallery/`. A folder inside it is an album. To add a title, caption and tags, put a Markdown file with the same name beside the photo (`sunset.md` next to `sunset.jpg`):
+
+```markdown
+---
+tags: [sea, evenings]
+---
+# Sunset over the bay
+
+The whole sky went orange for about ten minutes.
+```
+
+Only resized copies are published, never your originals, so the GPS location in your phone's photos stays private.
+
 ## 5. Make it yours
 
 A theme is the `theme/` folder in the blog. Files ending in `.html` or `.jinja` are templates rendered to the same path, and everything else is copied. A route header makes one template produce many pages:

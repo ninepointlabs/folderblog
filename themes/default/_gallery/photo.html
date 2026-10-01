@@ -1,0 +1,35 @@
+{% extends "_layouts/base.html" %}
+{% from "_gallery/macros.html" import tag_chips %}
+{% block title %}{{ photo.title or photo.alt or gallery.title }} · {{ site.title }}{% endblock %}
+{% block description %}{{ photo.caption | plaintext or photo.alt or gallery.title }}{% endblock %}
+{% block head %}<meta property="og:image" content="{{ photo.image | absolute_url }}">{% endblock %}
+{% block main %}
+{% set heading = photo.title or (photo.album.title if photo.album else gallery.title) %}
+<style>{% include "_gallery/gallery.css" %}</style>
+<div class="gallery gallery-photo">
+  <p class="gallery-crumbs"><a href="{{ gallery.url }}">{{ gallery.title }}</a>{% if photo.album %} <span aria-hidden="true">/</span> <a href="{{ photo.album.url }}">{{ photo.album.title }}</a>{% endif %}</p>
+  <figure class="gallery-figure">
+    <a class="gallery-figure-image" href="{{ photo.image }}" style="--r: {{ photo.ratio }}">
+      <img src="{{ photo.image }}" srcset="{{ photo.thumb }} {{ photo.thumb_width }}w, {{ photo.image }} {{ photo.width }}w" sizes="(min-width: 72rem) 72rem, 100vw" width="{{ photo.width }}" height="{{ photo.height }}" alt="{{ photo.alt }}" decoding="async">
+    </a>
+    <figcaption class="gallery-head">
+      <h1{% if not photo.title %} class="gallery-sr"{% endif %}>{{ heading }}</h1>
+      {% if photo.caption %}<div class="gallery-caption">{{ photo.caption }}</div>{% endif %}
+      <p class="gallery-meta">
+        <time datetime="{{ photo.date }}">{{ photo.date | date("%B %-d, %Y") }}</time>{% if photo.draft %} · <span class="gallery-draft">draft</span>{% endif %}
+        {% if photo.exif %}<span class="gallery-exif">
+          {%- for v in [photo.exif.camera, photo.exif.lens, photo.exif.focal_length, photo.exif.aperture, photo.exif.shutter, photo.exif.iso] if v %}<span>{{ v }}</span>{% endfor -%}
+        </span>{% endif %}
+      </p>
+      {{ tag_chips(photo.tags) }}
+    </figcaption>
+  </figure>
+  {% if photo.prev or photo.next %}
+  <nav class="gallery-neighbours" data-photo-nav>
+    {% if photo.prev %}<a rel="prev" href="{{ photo.prev.url }}"><img src="{{ photo.prev.thumb }}" alt="" loading="lazy"><span>← {{ photo.prev.title or "Previous" }}</span></a>{% else %}<span></span>{% endif %}
+    {% if photo.next %}<a rel="next" href="{{ photo.next.url }}"><span>{{ photo.next.title or "Next" }} →</span><img src="{{ photo.next.thumb }}" alt="" loading="lazy"></a>{% endif %}
+  </nav>
+  {% endif %}
+</div>
+<script>{% include "_gallery/gallery.js" %}</script>
+{% endblock %}

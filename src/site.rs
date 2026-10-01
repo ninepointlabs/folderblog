@@ -2,6 +2,7 @@
 
 use crate::config::Config;
 use crate::content::{self, Body, DateSource, Kind, Source};
+use crate::gallery::{self, Gallery};
 use crate::markdown::{self, Markup};
 use crate::state::State;
 use crate::templates::{EnvSettings, make_env, prefix_base};
@@ -55,6 +56,19 @@ pub struct Site {
     pub globals: BTreeMap<String, Value>,
     pub warnings: Vec<String>,
     pub opts: LoadOptions,
+    /// Set when `[gallery] enabled = true`.
+    pub gallery: Option<Gallery>,
+    pub gallery_values: GalleryValues,
+}
+
+/// Template values for the gallery, parallel to `Gallery::photos` / `albums` / `tag_index`.
+#[derive(Default)]
+pub struct GalleryValues {
+    pub photos: Vec<Value>,
+    pub albums: Vec<Value>,
+    /// (route, tag value)
+    pub tags: Vec<(String, Value)>,
+    pub root: Value,
 }
 
 pub fn permalink(pattern: &str, slug: &str, date: Option<&DateTime<FixedOffset>>) -> String {
@@ -147,6 +161,21 @@ impl Site {
             };
             pre.push(Pre { src, slug, date, route });
         }
+        let gallery = if cfg.gallery.enabled {
+            let cache = if opts.fixtures.is_some() { "gallery-fixtures" } else { "gallery" };
+            let cache_dir = blog_dir.join(crate::state::STATE_DIR).join("cache").join(cache);
+            let args = gallery::LoadArgs {
+                content_root: &content_root,
+                cache_dir: &cache_dir,
+                route: &cfg.gallery.url,
+                base_path: &base_path,
+                drafts: opts.drafts,
+                prune_cache: true,
+            };
+            Some(gallery::load(args, &mut state, &mut warnings)?)
+        } else {
+            None
+        };
         state.save()?;
 
         // Where each source-side path is published: content items and every attached/loose file.
@@ -367,6 +396,8 @@ impl Site {
             globals: BTreeMap::new(),
             warnings,
             opts,
+            gallery,
+            gallery_values: GalleryValues::default(),
         };
         site.build_values()?;
         Ok(site)
@@ -563,7 +594,163 @@ impl Site {
         g.insert("years".into(), Value::from(year_values));
         g.insert("data".into(), data);
         g.insert("preview".into(), Value::from(self.opts.drafts));
+        self.gallery_values = self.gallery_values();
+        self.globals.insert("gallery".into(), self.gallery_values.root.clone());
         Ok(())
+    }
+
+    fn photo_link(&self, p: &gallery::Photo) -> Value {
+        let mut m = BTreeMap::new();
+        m.insert("title", Value::from(p.title.clone()));
+        m.insert("alt", Value::from(p.alt.clone()));
+        m.insert("url", Value::from(prefix_base(&self.base_path, &p.route)));
+        m.insert("thumb", Value::from(prefix_base(&self.base_path, &p.thumb_route)));
+        Value::from_serialize(m)
+    }
+
+    fn gallery_values(&self) -> GalleryValues {
+        let url = |r: &str| prefix_base(&self.base_path, r);
+        let none = || Value::from(());
+        let Some(g) = &self.gallery else {
+            let mut m: BTreeMap<&str, Value> = BTreeMap::new();
+            m.insert("enabled", Value::from(false));
+            m.insert("title", Value::from("Gallery"));
+            m.insert("url", Value::from(url(&self.cfg.gallery.url)));
+            m.insert("permalink", Value::from(crate::templates::absolute(&self.cfg.base_url, &self.base_path, &url(&self.cfg.gallery.url))));
+            m.insert("intro", Value::from_safe_string(String::new()));
+            m.insert("meta", Value::from_serialize(serde_json::Map::new()));
+            m.insert("count", Value::from(0));
+            for k in ["photos", "albums", "tags"] {
+                m.insert(k, Value::from(Vec::<Value>::new()));
+            }
+            return GalleryValues { root: Value::from_serialize(m), ..Default::default() };
+        };
+        let tag_index = gallery::tag_index(g);
+        let tag_url = |name: &str| url(&format!("{}tags/{}/", g.route, slugify(name)));
+        let album_link = |i: usize| {
+            let a = &g.albums[i];
+            let mut m = BTreeMap::new();
+            m.insert("title", Value::from(a.title.clone()));
+            m.insert("slug", Value::from(a.slug.clone()));
+            m.insert("url", Value::from(url(&a.route)));
+            Value::from_serialize(m)
+        };
+        // Neighbours follow the album's order for album photos, else the gallery's order.
+        let mut neighbours: Vec<(Option<usize>, Option<usize>)> = vec![(None, None); g.photos.len()];
+        let mut seqs: Vec<Vec<usize>> = g.albums.iter().map(|a| a.photos.clone()).collect();
+        seqs.push((0..g.photos.len()).filter(|&i| g.photos[i].album.is_none()).collect());
+        for seq in &seqs {
+            for (k, &i) in seq.iter().enumerate() {
+                neighbours[i] = (k.checked_sub(1).map(|k| seq[k]), seq.get(k + 1).copied());
+            }
+        }
+        let photos: Vec<Value> = g
+            .photos
+            .iter()
+            .enumerate()
+            .map(|(i, p)| {
+                let mut m: BTreeMap<&str, Value> = BTreeMap::new();
+                let page = url(&p.route);
+                m.insert("kind", Value::from("photo"));
+                m.insert("title", Value::from(p.title.clone()));
+                m.insert("alt", Value::from(p.alt.clone()));
+                m.insert("slug", Value::from(p.slug.clone()));
+                m.insert("url", Value::from(page.clone()));
+                m.insert("permalink", Value::from(crate::templates::absolute(&self.cfg.base_url, &self.base_path, &page)));
+                m.insert("image", Value::from(url(&p.image_route)));
+                m.insert("thumb", Value::from(url(&p.thumb_route)));
+                m.insert("width", Value::from(p.info.width));
+                m.insert("height", Value::from(p.info.height));
+                m.insert("thumb_width", Value::from(p.info.thumb_width));
+                m.insert("thumb_height", Value::from(p.info.thumb_height));
+                let ratio = if p.info.height == 0 { 1.0 } else { p.info.width as f64 / p.info.height as f64 };
+                m.insert("ratio", Value::from((ratio * 10000.0).round() / 10000.0));
+                m.insert("caption", Value::from_safe_string(p.caption_html.clone()));
+                m.insert("date", Value::from(p.date.to_rfc3339()));
+                m.insert("date_source", Value::from_serialize(p.date_source));
+                m.insert("year", Value::from(p.date.year()));
+                m.insert("month", Value::from(p.date.month()));
+                m.insert("day", Value::from(p.date.day()));
+                let tags: Vec<Value> = p
+                    .tags
+                    .iter()
+                    .map(|t| {
+                        Value::from_serialize(BTreeMap::from([("name", t.clone()), ("slug", slugify(t)), ("url", tag_url(t))]))
+                    })
+                    .collect();
+                m.insert("tags", Value::from(tags));
+                m.insert("album", p.album.map(album_link).unwrap_or_else(none));
+                m.insert("exif", p.info.exif.as_ref().map(Value::from_serialize).unwrap_or_else(none));
+                m.insert("meta", Value::from_serialize(&p.front));
+                m.insert("draft", Value::from(p.draft));
+                m.insert("source", Value::from(p.source.clone()));
+                m.insert("sidecar", p.sidecar.clone().map(Value::from).unwrap_or_else(none));
+                let (prev, next) = neighbours[i];
+                m.insert("prev", prev.map(|j| self.photo_link(&g.photos[j])).unwrap_or_else(none));
+                m.insert("next", next.map(|j| self.photo_link(&g.photos[j])).unwrap_or_else(none));
+                Value::from_serialize(m)
+            })
+            .collect();
+        let albums: Vec<Value> = g
+            .albums
+            .iter()
+            .map(|a| {
+                let mut m: BTreeMap<&str, Value> = BTreeMap::new();
+                let page = url(&a.route);
+                m.insert("kind", Value::from("album"));
+                m.insert("title", Value::from(a.title.clone()));
+                m.insert("slug", Value::from(a.slug.clone()));
+                m.insert("url", Value::from(page.clone()));
+                m.insert("permalink", Value::from(crate::templates::absolute(&self.cfg.base_url, &self.base_path, &page)));
+                m.insert("description", Value::from_safe_string(a.description_html.clone()));
+                m.insert("date", a.date.map(|d| Value::from(d.to_rfc3339())).unwrap_or_else(none));
+                // `cover: file.jpg` in the album's index.md, else its first photo.
+                let cover = a
+                    .front
+                    .get("cover")
+                    .and_then(|v| v.as_str())
+                    .and_then(|c| a.photos.iter().find(|&&i| g.photos[i].source.rsplit('/').next() == Some(c.trim())))
+                    .or(a.photos.first());
+                m.insert("cover", cover.map(|&i| photos[i].clone()).unwrap_or_else(none));
+                m.insert("photos", Value::from(a.photos.iter().map(|&i| photos[i].clone()).collect::<Vec<_>>()));
+                m.insert("count", Value::from(a.photos.len()));
+                let tags: Vec<Value> = a
+                    .tags
+                    .iter()
+                    .map(|t| Value::from_serialize(BTreeMap::from([("name", t.clone()), ("slug", slugify(t)), ("url", tag_url(t))])))
+                    .collect();
+                m.insert("tags", Value::from(tags));
+                m.insert("meta", Value::from_serialize(&a.front));
+                m.insert("source", Value::from(a.source.clone()));
+                Value::from_serialize(m)
+            })
+            .collect();
+        let tags: Vec<(String, Value)> = tag_index
+            .iter()
+            .map(|(slug, name, idx)| {
+                let route = format!("{}tags/{slug}/", g.route);
+                let mut m: BTreeMap<&str, Value> = BTreeMap::new();
+                m.insert("kind", Value::from("tag"));
+                m.insert("name", Value::from(name.clone()));
+                m.insert("slug", Value::from(slug.clone()));
+                m.insert("url", Value::from(url(&route)));
+                m.insert("count", Value::from(idx.len()));
+                m.insert("photos", Value::from(idx.iter().map(|&i| photos[i].clone()).collect::<Vec<_>>()));
+                (route, Value::from_serialize(m))
+            })
+            .collect();
+        let mut m: BTreeMap<&str, Value> = BTreeMap::new();
+        m.insert("enabled", Value::from(true));
+        m.insert("title", Value::from(g.title.clone()));
+        m.insert("url", Value::from(url(&g.route)));
+        m.insert("permalink", Value::from(crate::templates::absolute(&self.cfg.base_url, &self.base_path, &url(&g.route))));
+        m.insert("intro", Value::from_safe_string(g.intro_html.clone()));
+        m.insert("meta", Value::from_serialize(&g.front));
+        m.insert("count", Value::from(photos.len()));
+        m.insert("photos", Value::from(photos.clone()));
+        m.insert("albums", Value::from(albums.clone()));
+        m.insert("tags", Value::from(tags.iter().map(|t| t.1.clone()).collect::<Vec<_>>()));
+        GalleryValues { photos, albums, tags, root: Value::from_serialize(m) }
     }
 }
 

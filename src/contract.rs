@@ -27,6 +27,9 @@ pub const GLOBALS: &[Field] = &[
     f("post", "item", "Set when rendering a post (same value as `item`)."),
     f("page", "item", "Set when rendering a page (same value as `item`)."),
     f("pager", "pager", "Set in templates whose route header has `paginate`; see **pager** below."),
+    f("gallery", "gallery", "The photo gallery; see **gallery** below. Always defined, so navigation can use `{% if gallery.enabled %}`."),
+    f("photo", "photo", "Set when rendering `theme/_gallery/photo.html` (same value as `item`)."),
+    f("album", "album", "Set when rendering `theme/_gallery/album.html` (same value as `item`)."),
 ];
 
 pub const SITE_FIELDS: &[Field] = &[
@@ -102,6 +105,75 @@ pub const PAGER_FIELDS: &[Field] = &[
     f("urls", "list of string", "URLs of every page, in order."),
 ];
 
+pub const GALLERY_FIELDS: &[Field] = &[
+    f("enabled", "bool", "`[gallery] enabled` from blog.toml. When false every list below is empty and no gallery pages are made."),
+    f("title", "string", "Title of `gallery/index.md` (front matter or leading heading), else `Gallery`."),
+    f("url", "string", "URL of the gallery page, from `[gallery] url` (default `/gallery/`)."),
+    f("permalink", "string", "Absolute URL of the gallery page."),
+    f("intro", "html", "Body of `gallery/index.md`, rendered (empty if there is none)."),
+    f("meta", "object", "Front matter of `gallery/index.md`."),
+    f("count", "int", "Number of photos."),
+    f("photos", "list of photo", "Every photo, newest first (album photos included)."),
+    f("albums", "list of album", "Albums (folders inside `gallery/`), newest first. Empty folders are left out."),
+    f("tags", "list of gallery tag", "Every tag used by a photo, sorted by name. Separate from the post `tags`."),
+];
+
+pub const PHOTO_FIELDS: &[Field] = &[
+    f("kind", "string", "`\"photo\"`."),
+    f("title", "string", "Sidecar front matter `title`, else its leading heading, else the filename. Empty for camera filenames (`IMG_2041`, `PXL_…`, `DSC…`)."),
+    f("alt", "string", "Sidecar `alt`, else the title, else the caption as text. May be empty."),
+    f("slug", "string", "From the filename (date prefix removed); sidecar `slug` overrides. Unique within its album."),
+    f("url", "string", "URL of the photo's own page, e.g. `/gallery/paris/eiffel/`."),
+    f("permalink", "string", "Absolute URL of the photo's page."),
+    f("image", "string", "URL of the published image: at most 2048 px on the long side, re-encoded so no EXIF or GPS data is published. GIFs are published unchanged."),
+    f("thumb", "string", "URL of a thumbnail that fits in 1600×560 px (use it in grids)."),
+    f("width", "int", "Width of `image` in pixels (after applying the camera's rotation)."),
+    f("height", "int", "Height of `image` in pixels."),
+    f("thumb_width", "int", "Width of `thumb`."),
+    f("thumb_height", "int", "Height of `thumb`."),
+    f("ratio", "float", "`width / height`, for aspect-ratio layouts (`style=\"--r: {{ photo.ratio }}\"`)."),
+    f("caption", "html", "The sidecar's Markdown body, rendered (empty without a sidecar)."),
+    f("date", "date", "Sidecar `date`, else a `YYYY-MM-DD-` filename prefix, else when the camera took it (EXIF), else when folderblog first saw the file."),
+    f("date_source", "string", "`front_matter`, `filename`, `exif` or `first_seen`."),
+    f("year", "int", "Year of `date`."),
+    f("month", "int", "Month of `date`."),
+    f("day", "int", "Day of `date`."),
+    f("tags", "list of {name, slug, url}", "Sidecar `tags` plus the album's `tags`; `url` is the gallery tag page."),
+    f("album", "{title, slug, url} or none", "The album the photo is in."),
+    f("exif", "object or none", "Camera settings as display strings, each possibly none: `camera`, `lens`, `focal_length` (`35 mm`), `aperture` (`ƒ/2.8`), `shutter` (`1/250 s`), `iso` (`ISO 200`). Location is never read."),
+    f("meta", "object", "All sidecar front matter as written."),
+    f("draft", "bool", "Sidecar `draft: true` (only ever visible in preview)."),
+    f("source", "string", "The image file, e.g. `gallery/paris/eiffel.jpg`."),
+    f("sidecar", "string or none", "The sidecar file, e.g. `gallery/paris/eiffel.md`."),
+    f("prev", "{title, alt, url, thumb} or none", "Previous photo in the same album (or among photos outside albums)."),
+    f("next", "{title, alt, url, thumb} or none", "Next photo in the same album (or among photos outside albums)."),
+];
+
+pub const ALBUM_FIELDS: &[Field] = &[
+    f("kind", "string", "`\"album\"`."),
+    f("title", "string", "Title of the album's `index.md`, else the folder name."),
+    f("slug", "string", "From the folder name; `index.md` `slug` overrides."),
+    f("url", "string", "URL of the album page, e.g. `/gallery/paris/`."),
+    f("permalink", "string", "Absolute URL of the album page."),
+    f("description", "html", "Body of the album's `index.md`, rendered."),
+    f("date", "date or none", "`index.md` `date`, else the newest photo's date."),
+    f("cover", "photo", "The photo named by `index.md` `cover: file.jpg`, else the album's first photo."),
+    f("photos", "list of photo", "Oldest first (a story in order); `order: newest` in `index.md` reverses it."),
+    f("count", "int", "Number of photos."),
+    f("tags", "list of {name, slug, url}", "`index.md` `tags`; every photo in the album gets them too."),
+    f("meta", "object", "Front matter of the album's `index.md`."),
+    f("source", "string", "The folder, e.g. `gallery/paris/`."),
+];
+
+pub const GALLERY_TAG_FIELDS: &[Field] = &[
+    f("kind", "string", "`\"tag\"`."),
+    f("name", "string", "Tag as first written."),
+    f("slug", "string", "URL-safe form."),
+    f("url", "string", "URL of the tag's gallery page, `<gallery.url>tags/<slug>/`."),
+    f("count", "int", "Number of photos."),
+    f("photos", "list of photo", "Photos with this tag, newest first."),
+];
+
 pub const ROUTE_KEYS: &[Field] = &[
     f("url", "template string", "Output URL for each rendered page. Ends in `/` for `<url>/index.html`. May use `item`, the `as` name, `pager.number`, and all globals."),
     f("each", "expression", "Render once per element of this Jinja expression, e.g. `tags` or `posts | selectattr(\"meta.series\") | groupby(\"meta.series\")`."),
@@ -170,6 +242,8 @@ pub const CONFIG_KEYS: &[Field] = &[
     f("build.pre", "list of commands", "Shell commands run before a build (working directory: the blog folder)."),
     f("build.post", "list of commands", "Shell commands run after rendering, with `$FOLDERBLOG_OUT` set to the fresh output directory; they may add or change files there."),
     f("watch.ignore", "list of paths", "Paths (relative to the blog folder, prefix match) whose changes never trigger a rebuild."),
+    f("gallery.enabled", "bool", "Publish the pictures in `gallery/` as a photo gallery (default false). `folderblog gallery on` sets it and adds `gallery/` and the templates."),
+    f("gallery.url", "string", "Where the gallery lives (default `/gallery/`)."),
     f("deploy.type", "string", "`github`, `git` or `command`."),
     f("deploy.owner", "string", "github: account or org that owns the repo (set by `folderblog new` when logged in)."),
     f("deploy.repo", "string", "github: repo name. Created, with Pages turned on, at the first deploy."),
@@ -215,7 +289,7 @@ hidden base theme: if a file is not in `theme/`, it does not exist.
 
 ## The only rules the engine enforces
 
-1. The engine owns: content discovery, Markdown rendering, post/page URLs,
+1. The engine owns: content discovery, Markdown rendering, post/page URLs, gallery URLs and image resizing,
    `/feed.xml` (RSS, full content, absolute URLs) and `/sitemap.xml`.
    A theme cannot produce those two paths; link to them with `site.feed_url`.
 2. The engine never adds markup, classes, styles or scripts to theme output.
@@ -332,6 +406,38 @@ Fixed body markup you may want to style:
   becomes `style="text-align: …"` on cells — the only inline style in body output.
 - Task lists: `<input disabled type="checkbox">` inside `<li>`.
 
+## The photo gallery
+
+When blog.toml has `[gallery] enabled = true`, every JPEG, PNG, WebP or GIF in `gallery/`
+becomes a photo with its own page. The engine owns the gallery's URLs, like post URLs;
+the theme owns every byte of how it looks:
+
+| URL | template | variables |
+|---|---|---|
+| `gallery.url` | `theme/_gallery/index.html` | `gallery` (also `item`) |
+| `<gallery.url><album>/` | `theme/_gallery/album.html` | `album` |
+| `<gallery.url>tags/<tag>/` | `theme/_gallery/tag.html` | `tag` (a gallery tag) |
+| `<gallery.url>[<album>/]<photo>/` | `theme/_gallery/photo.html` | `photo` |
+
+All four must exist while the gallery is on (`folderblog gallery on` copies the default
+ones in; it never overwrites). They are ordinary templates: extend `_layouts/base.html`,
+include partials, import macros. `gallery` is a global on every page, so the site's
+navigation can link to it with `{{% if gallery.enabled %}}`.
+
+- Folders directly inside `gallery/` are albums (deeper folders belong to their album).
+  An album's optional `index.md` gives it a title, `date`, `tags`, `cover: file.jpg`,
+  `order: newest` and a description (its body).
+- A sidecar `sunset.md` (or `sunset.jpg.md`) beside `sunset.jpg` gives the photo a title
+  (front matter or leading heading), a caption (its body), `tags`, `date`, `alt`, `slug`,
+  `draft`, and any other keys (in `photo.meta`). Photos need no sidecar.
+- `gallery/index.md` gives the gallery its title and intro.
+- Only resized, re-encoded copies are published (`photo.image`, `photo.thumb`), never the
+  original files, so camera metadata such as GPS location never reaches the site.
+  Resizing happens once per file and is cached in `.blog/`.
+- Photo tags are separate from post tags. A tag page can still find posts with the same
+  tag: `{{% for t in tags if t.slug == tag.slug %}}…{{% endfor %}}`.
+- HEIC/AVIF/RAW files are skipped with a warning (export them as JPEG).
+
 ## Template context
 
 Every template sees these globals:
@@ -352,6 +458,18 @@ Every template sees these globals:
 ### pager
 
 {pager}
+### gallery
+
+{gallery}
+### photo
+
+{photo}
+### album
+
+{album}
+### gallery tag
+
+{gallery_tag}
 ### Filters
 
 folderblog filters:
@@ -380,6 +498,7 @@ group with `posts | groupby("year")`.
 - `pages/about.md` → `/about/`, `pages/projects/x.md` → `/projects/x/`, `pages/index.md` → `/`.
 - `drafts/` — only in `preview`.
 - `static/` — copied to the site root untouched (favicons, CNAME, downloads).
+- `gallery/` — pictures for the photo gallery, when it is on (see **The photo gallery**).
 - `data/` — JSON/TOML/YAML exposed as `data`.
 - Front matter is optional (YAML between `---` or TOML between `+++`). Known keys:
   `title`, `date`, `tags`, `slug`, `layout`, `draft`, `excerpt`/`summary`, `updated`,
@@ -401,7 +520,7 @@ group with `posts | groupby("year")`.
    `folderblog preview --fixtures stress` renders your theme against stress content:
    very long titles, no-title posts, images, bundles, code, tables, footnotes, raw HTML,
    deep tag lists, many years. Fixture sets: {fixtures}. Fixtures replace only
-   `posts/`, `pages/` and `drafts/`; blog.toml, `[params]`, `data/` and `static/` stay yours.
+   `posts/`, `pages/`, `drafts/` and `gallery/` (the gallery still needs `[gallery] enabled = true`); blog.toml, `[params]`, `data/` and `static/` stay yours.
    `--fixtures` also works with `build`, `check` and `data`
    (`folderblog data --fixtures stress` lists the fixture URLs). No fixture uses a custom
    layout, so render one yourself if you add `_layouts/<name>.html`.
@@ -425,6 +544,10 @@ that path is listed in `watch.ignore`.
         tag = table(TAG_FIELDS),
         year = table(YEAR_FIELDS),
         pager = table(PAGER_FIELDS),
+        gallery = table(GALLERY_FIELDS),
+        photo = table(PHOTO_FIELDS),
+        album = table(ALBUM_FIELDS),
+        gallery_tag = table(GALLERY_TAG_FIELDS),
         filters = pairs(FILTERS),
         tests = TESTS.iter().map(|b| format!("`{b}`")).collect::<Vec<_>>().join(", "),
         builtin = BUILTIN_FILTERS.iter().map(|b| format!("`{b}`")).collect::<Vec<_>>().join(", "),

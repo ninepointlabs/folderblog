@@ -7,6 +7,7 @@ mod contract;
 mod deploy;
 mod feed;
 mod fixtures;
+mod gallery;
 mod github;
 mod markdown;
 mod preview;
@@ -227,6 +228,7 @@ fn run(cli: Cli) -> Result<i32> {
             Ok(if bad { 1 } else { 0 })
         }
         Cmd::InstallService { root, no_start, print } => install_service(&default_root(root), no_start, print),
+        Cmd::Gallery { state, blog } => gallery_cmd(&blog_dir(blog)?, state.as_deref()),
         Cmd::AgentsMd { blog, write } => {
             let blog = blog_dir(blog)?;
             let path = blog.join("AGENTS.md");
@@ -241,6 +243,53 @@ fn run(cli: Cli) -> Result<i32> {
             Ok(0)
         }
     }
+}
+
+fn gallery_cmd(blog: &Path, state: Option<&str>) -> Result<i32> {
+    let cfg_path = blog.join(config::CONFIG_FILE);
+    let cfg = config::Config::load(blog)?;
+    let page = format!("{}{}", cfg.base_url, cfg.gallery.url);
+    let Some(state) = state else {
+        let n = std::fs::read_dir(blog.join(gallery::GALLERY_DIR)).map(|d| d.count()).unwrap_or(0);
+        match cfg.gallery.enabled {
+            true => println!("gallery is on: {page} (from {} entries in gallery/)", n),
+            false => println!("gallery is off; `folderblog gallery on` turns it on"),
+        }
+        return Ok(0);
+    };
+    let on = state == "on";
+    let text = std::fs::read_to_string(&cfg_path)?;
+    if cfg.gallery.enabled != on {
+        std::fs::write(&cfg_path, gallery::set_enabled(&text, on)?)?;
+    }
+    if !on {
+        println!("gallery is off; gallery/ and the theme's _gallery/ templates were left as they are");
+        return Ok(0);
+    }
+    let dir = blog.join(gallery::GALLERY_DIR);
+    if !dir.is_dir() {
+        std::fs::create_dir_all(&dir)?;
+        println!("created {}", dir.display());
+    }
+    // Templates come from the default theme; ones the blog already has are never overwritten.
+    let src = fixtures::DEFAULT_THEME.get_dir("_gallery").context("default theme has no _gallery/")?;
+    for f in src.files() {
+        let target = blog.join("theme").join(f.path());
+        if !target.exists() {
+            std::fs::create_dir_all(target.parent().unwrap())?;
+            std::fs::write(&target, f.contents())?;
+            println!("added theme/{}", f.path().display());
+        }
+    }
+    let base = std::fs::read_to_string(blog.join("theme/_layouts/base.html")).unwrap_or_default();
+    if !base.contains("gallery") {
+        println!("note: the theme's navigation doesn't link to the gallery yet; add e.g.");
+        println!("  {{% if gallery.enabled and gallery.count %}}<a href=\"{{{{ gallery.url }}}}\">{{{{ gallery.title }}}}</a>{{% endif %}}");
+        println!("  to theme/_layouts/base.html");
+    }
+    println!("gallery is on: drop pictures into {} and they appear at {page}", dir.display());
+    println!("subfolders become albums; a sidecar like sunset.md beside sunset.jpg adds a title, caption and tags");
+    Ok(0)
 }
 
 fn dns_help(domain: &str, owner: &str) -> String {

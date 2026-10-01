@@ -22,6 +22,7 @@ without touching the engine.
 - [Preparing GitHub](#preparing-github) (one time, about 5 minutes)
 - [Running in the background](#running-in-the-background)
 - [Writing](#writing)
+- [Photo gallery](#photo-gallery)
 - [Themes and design](#themes-and-design)
 - [Configuration (`blog.toml`)](#configuration-blogtoml)
 - [Other hosts](#other-hosts)
@@ -41,6 +42,8 @@ without touching the engine.
 - Pages (`pages/about.md` → `/about/`), drafts that only appear in preview, a `static/`
   folder copied as-is, and `data/` files (JSON, TOML, YAML) for templates.
 - Tables, footnotes, task lists, syntax highlighting, and raw HTML are all supported.
+- An optional photo gallery: drop pictures into `gallery/`, folders become albums, and a
+  small `.md` beside a photo adds a title, caption and tags.
 - Deleting a file unpublishes it. Your files are only ever read, never modified.
 
 **Publishing**
@@ -275,6 +278,7 @@ scripts and status bars.
   drafts/       only shown in `folderblog preview`
   static/       copied to the site root untouched (favicon, CNAME, downloads)
   data/         JSON/TOML/YAML files available to templates
+  gallery/      pictures for the photo gallery (after `folderblog gallery on`)
   theme/        all templates and styles; this decides what the site looks like
   AGENTS.md     the theme contract for coding agents (generated)
   .blog/        folderblog's own state; ignore it
@@ -318,6 +322,57 @@ it and write `![Chalk track](track.jpg)`. Loose files in `posts/` or `static/` w
 If a file has a mistake folderblog can't safely guess around (broken front matter, an
 unreadable date), that blog's build stops, you get a notification, and the live site
 keeps the last good version until you fix it.
+
+## Photo gallery
+
+```sh
+folderblog gallery on          # in the blog folder, or: folderblog gallery on ~/Blogs/myblog
+```
+
+This sets `[gallery] enabled = true` in `blog.toml`, creates `gallery/`, and adds the gallery
+templates to `theme/_gallery/` (it never overwrites ones you already have). Then:
+
+```
+gallery/
+  index.md                optional: "# Photographs" and an intro paragraph
+  harbour.jpg             a photo; no other file needed
+  harbour.md              optional sidecar: title, caption, tags
+  2024-06-01-picnic.jpg   a date prefix sets the photo's date
+  iceland/                a folder is an album
+    index.md              optional: album title, date, tags, cover, description
+    IMG_2041.jpg
+```
+
+A sidecar is a normal Markdown file with the photo's name:
+
+```markdown
+---
+tags: [sea, mornings]
+alt: Fishing boats in a flat calm harbour
+---
+# The harbour at dawn
+
+Before the boats go out, the water is completely still.
+```
+
+- Every photo gets its own page, every album and tag gets a page, and the gallery page
+  shows albums, tags and a justified photo grid. Clicking a photo opens a full-screen
+  viewer (arrow keys and swipe work); without JavaScript it opens the photo's page.
+- The date is the sidecar `date`, else a filename date, else when the camera took it,
+  else when folderblog first saw the file. Camera settings (lens, aperture, shutter, ISO)
+  are shown on the photo page.
+- Tags in an album's `index.md` apply to every photo in it. `draft: true` hides a photo.
+- **Only resized copies are published** (2048 px and a thumbnail), never your originals,
+  so the GPS location your phone stores in each picture never reaches the site.
+  Resizing happens once per photo and is cached, so later builds stay fast.
+- JPEG, PNG, WebP and GIF work. HEIC (iPhone) and RAW files are skipped with a warning;
+  export them as JPEG.
+- The default theme links to the gallery from its navigation once it has photos. For
+  another theme, add `{% if gallery.enabled and gallery.count %}<a href="{{ gallery.url }}">{{ gallery.title }}</a>{% endif %}`
+  to `theme/_layouts/base.html`. The gallery pages use the theme's own layout, fonts and
+  colours, and `theme/_gallery/` is yours to restyle (AGENTS.md documents every field).
+
+`folderblog gallery off` turns it off again and leaves your pictures where they are.
 
 ## Themes and design
 
@@ -381,6 +436,10 @@ post = []                                        # $FOLDERBLOG_OUT is the fresh 
 [watch]
 ignore = []                                      # paths that never trigger a rebuild
 
+[gallery]
+enabled = false                                  # `folderblog gallery on` turns it on
+url = "/gallery/"
+
 [params]                                         # anything you like, for templates
 tagline = "Notes from the workbench"
 ```
@@ -425,6 +484,7 @@ folderblog only publishes when the built site actually changed.
 | `folderblog preview [BLOG] [--port N] [--fixtures SET]` | Local preview with live reload |
 | `folderblog check [BLOG] [--fixtures SET]` | Find template errors, feed problems, broken links |
 | `folderblog data [URL]` | Template context for a page (or list all pages) |
+| `folderblog gallery [on\|off] [BLOG]` | Turn the photo gallery on or off (adds `gallery/` and its templates) |
 | `folderblog agents-md [BLOG] [--write]` | Refresh the blog's AGENTS.md |
 
 `BLOG` defaults to the current folder. `FOLDERBLOG_ROOT` or `--root` changes `~/Blogs`.

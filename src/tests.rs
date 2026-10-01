@@ -411,11 +411,18 @@ fn new_default_blog() -> (tempfile::TempDir, PathBuf) {
     (tmp, dir)
 }
 
+fn enable_gallery(dir: &Path) {
+    let cfg = fs::read_to_string(dir.join("blog.toml")).unwrap();
+    fs::write(dir.join("blog.toml"), crate::gallery::set_enabled(&cfg, true).unwrap()).unwrap();
+}
+
 #[test]
 fn default_theme_passes_check_on_all_fixtures() {
     let (_t, dir) = new_default_blog();
-    for f in crate::fixtures::names() {
-        let rep = crate::check::check(&dir, Some(f.clone())).unwrap();
+    let (_t2, gdir) = new_default_blog();
+    enable_gallery(&gdir);
+    for (dir, f) in crate::fixtures::names().into_iter().map(|f| (&dir, f)).chain(crate::fixtures::names().into_iter().map(|f| (&gdir, f))) {
+        let rep = crate::check::check(dir, Some(f.clone())).unwrap();
         assert!(rep.errors.is_empty(), "fixture {f}: {:#?}", rep.errors);
         let undefined: Vec<_> = rep.warnings.iter().filter(|w| w.contains("undefined")).collect();
         assert!(undefined.is_empty(), "fixture {f}: {undefined:#?}");
@@ -444,6 +451,7 @@ fn eval(site: &Site, ctx: &std::collections::BTreeMap<String, minijinja::Value>,
 #[test]
 fn every_documented_field_exists() {
     let (_t, dir) = new_default_blog();
+    enable_gallery(&dir);
     let site = Site::load(&dir, LoadOptions { fixtures: Some("stress".into()), ..Default::default() }).unwrap();
     let plan = site.plan().unwrap();
     let post_out = plan
@@ -455,7 +463,7 @@ fn every_documented_field_exists() {
     let mut ctx = ctx.clone();
     ctx.insert("pager".into(), minijinja::Value::from_serialize(std::collections::BTreeMap::<String, i32>::new()));
     for g in crate::contract::GLOBALS {
-        if g.name == "pager" || g.name == "page" {
+        if ["pager", "page", "photo", "album"].contains(&g.name) {
             continue;
         }
         assert_eq!(eval(&site, &ctx, &format!("{{{{ {} is defined }}}}", g.name)), "true", "global {}", g.name);
@@ -472,6 +480,22 @@ fn every_documented_field_exists() {
     }
     for f in crate::contract::YEAR_FIELDS {
         assert_eq!(eval(&site, &ctx, &format!("{{{{ years[0].{} is defined }}}}", f.name)), "true", "year.{}", f.name);
+    }
+    let groups: [(&str, &[crate::contract::Field]); 4] = [
+        ("gallery", crate::contract::GALLERY_FIELDS),
+        ("gallery.photos[0]", crate::contract::PHOTO_FIELDS),
+        ("gallery.albums[0]", crate::contract::ALBUM_FIELDS),
+        ("gallery.tags[0]", crate::contract::GALLERY_TAG_FIELDS),
+    ];
+    for (base, fields) in groups {
+        for f in fields {
+            assert_eq!(eval(&site, &ctx, &format!("{{{{ {base}.{} is defined }}}}", f.name)), "true", "{base}.{}", f.name);
+        }
+    }
+    for (name, global) in [("_gallery/photo.html", "photo"), ("_gallery/album.html", "album")] {
+        let o = plan.outputs.iter().find(|o| matches!(&o.content, crate::render::Content::Render { template, .. } if template == name)).unwrap();
+        let crate::render::Content::Render { ctx: c, .. } = &o.content else { unreachable!() };
+        assert_eq!(eval(&site, c, &format!("{{{{ {global} is defined and item is defined }}}}")), "true", "{global}");
     }
     // Pager fields, from the default theme's paginated index.
     let idx = plan.outputs.iter().find(|o| o.url == "/").unwrap();
@@ -677,5 +701,133 @@ fn documented_tests_exist() {
     let ctx = std::collections::BTreeMap::new();
     for t in crate::contract::TESTS {
         assert_eq!(eval(&site, &ctx, &format!("{{{{ '{t}' is test }}}}")), "true", "test {t}");
+    }
+}
+
+// ---------- gallery ----------
+
+fn write_image(path: &Path, w: u32, h: u32) {
+    fs::create_dir_all(path.parent().unwrap()).unwrap();
+    let img = image::RgbImage::from_fn(w, h, |x, y| image::Rgb([(x % 256) as u8, (y % 256) as u8, 128]));
+    img.save(path).unwrap();
+}
+
+fn gallery_blog() -> Blog {
+    let b = Blog::new("[gallery]\nenabled = true");
+    for t in crate::gallery::TEMPLATES {
+        let name = t.rsplit('/').next().unwrap();
+        let body = match name {
+            "index.html" => "{{ gallery.title }}|{% for p in gallery.photos %}{{ p.title }}={{ p.thumb }};{% endfor %}|{% for a in gallery.albums %}{{ a.title }}:{{ a.count }}:{{ a.cover.slug }};{% endfor %}",
+            "album.html" => "{{ album.title }}|{% for p in album.photos %}{{ p.slug }};{% endfor %}",
+            "tag.html" => "#{{ tag.name }}|{% for p in tag.photos %}{{ p.slug }};{% endfor %}",
+            _ => "{{ photo.title }}|{{ photo.caption }}|{{ photo.width }}x{{ photo.height }}|{{ photo.date_source }}|{% for t in photo.tags %}{{ t.name }}@{{ t.url }};{% endfor %}|{{ photo.album.title }}|{{ photo.prev.url }}|{{ photo.next.url }}",
+        };
+        b.write(&format!("theme/{t}"), body);
+    }
+    b
+}
+
+#[test]
+fn gallery_publishes_resized_photos_albums_and_tags() {
+    let b = gallery_blog();
+    write_image(&b.dir.join("gallery/2024-01-05-sunset.jpg"), 3000, 2000);
+    write_image(&b.dir.join("gallery/IMG_2041.jpg"), 300, 400);
+    write_image(&b.dir.join("gallery/trip/one.png"), 200, 100);
+    write_image(&b.dir.join("gallery/trip/two.jpg"), 200, 100);
+    write_image(&b.dir.join("gallery/trip/hidden.jpg"), 200, 100);
+    b.write("gallery/index.md", "# Pictures\n\nIntro.\n");
+    b.write("gallery/2024-01-05-sunset.md", "---\ntags: [Sky, dusk]\n---\n# Red sky\n\nOver the *bay*.\n");
+    b.write("gallery/trip/index.md", "---\ntitle: The Trip\ntags: [travel]\ndate: 2024-02-01\ncover: two.jpg\n---\nWe went.\n");
+    b.write("gallery/trip/one.png.md", "---\ndate: 2024-02-02\ntags: [sky]\n---\n");
+    b.write("gallery/trip/two.md", "---\ndate: 2024-02-03\n---\n");
+    b.write("gallery/trip/hidden.md", "---\ndraft: true\n---\n");
+    b.build().unwrap();
+
+    let idx = b.read_out("gallery/index.html");
+    assert!(idx.starts_with("Pictures|"), "{idx}");
+    assert!(idx.contains("Red sky=/gallery/sunset.thumb.jpg;"), "{idx}");
+    assert!(idx.contains("=/gallery/img-2041.thumb.jpg;"), "camera names have no title: {idx}");
+    assert!(idx.contains("The Trip:2:two;"), "{idx}");
+    assert!(!idx.contains("hidden"), "drafts stay out of real builds");
+
+    let sunset = b.read_out("gallery/sunset/index.html");
+    assert!(sunset.starts_with("Red sky|<p>Over the <em>bay</em>.</p>|2048x1365|filename|"), "{sunset}");
+    assert!(sunset.contains("Sky@/gallery/tags/sky/;dusk@/gallery/tags/dusk/;"), "{sunset}");
+    // The published image is resized and the original is never published.
+    let out = build::public_dir(&b.dir);
+    let img = image::open(out.join("gallery/sunset.jpg")).unwrap();
+    assert_eq!((img.width(), img.height()), (2048, 1365));
+    let thumb = image::open(out.join("gallery/sunset.thumb.jpg")).unwrap();
+    assert!(thumb.height() <= 560 && thumb.width() <= 1600);
+    assert!(!out.join("gallery/2024-01-05-sunset.jpg").exists());
+    // Transparent PNGs stay PNG; album tags apply to every photo; neighbours follow album order.
+    let one = b.read_out("gallery/trip/one/index.html");
+    assert!(one.contains("sky@/gallery/tags/sky/;travel@/gallery/tags/travel/;|The Trip||/gallery/trip/two/"), "{one}");
+    assert!(out.join("gallery/trip/one.thumb.jpg").exists() || out.join("gallery/trip/one.thumb.png").exists());
+    assert_eq!(b.read_out("gallery/trip/index.html"), "The Trip|one;two;");
+    // Tags merge by slug ("Sky" and "sky") and list photos newest first.
+    assert_eq!(b.read_out("gallery/tags/sky/index.html"), "#sky|one;sunset;");
+    assert_eq!(b.read_out("gallery/tags/travel/index.html"), "#travel|two;one;");
+    // Gallery pages are in the sitemap; drafts appear in preview.
+    assert!(b.read_out("sitemap.xml").contains("/gallery/trip/two/"));
+    let preview = Site::load(&b.dir, LoadOptions { drafts: true, ..Default::default() }).unwrap();
+    assert!(preview.gallery.as_ref().unwrap().photos.iter().any(|p| p.slug == "hidden"));
+}
+
+#[test]
+fn gallery_off_publishes_nothing_and_missing_templates_fail_clearly() {
+    let b = Blog::new("");
+    write_image(&b.dir.join("gallery/a.jpg"), 50, 50);
+    b.build().unwrap();
+    assert!(!build::public_dir(&b.dir).join("gallery").exists());
+    let site = b.site();
+    assert!(!site.globals["gallery"].get_attr("enabled").unwrap().is_true());
+
+    let b = Blog::new("[gallery]\nenabled = true\nurl = \"photos\"");
+    write_image(&b.dir.join("gallery/a.jpg"), 50, 50);
+    let err = format!("{:#}", b.build().unwrap_err());
+    assert!(err.contains("theme/_gallery/index.html") && err.contains("folderblog gallery on"), "{err}");
+    for t in crate::gallery::TEMPLATES {
+        b.write(&format!("theme/{t}"), "{{ item.url }}");
+    }
+    b.build().unwrap();
+    assert_eq!(b.read_out("photos/a/index.html"), "/photos/a/");
+}
+
+#[test]
+fn gallery_cache_is_reused_and_pruned() {
+    let b = gallery_blog();
+    write_image(&b.dir.join("gallery/a.jpg"), 400, 300);
+    write_image(&b.dir.join("gallery/b.jpg"), 400, 300);
+    b.build().unwrap();
+    let cache = b.dir.join(".blog/cache/gallery");
+    let files = |d: &Path| {
+        let mut v: Vec<_> = fs::read_dir(d).unwrap().map(|e| e.unwrap().file_name().to_string_lossy().to_string()).collect();
+        v.sort();
+        v
+    };
+    let first = files(&cache);
+    assert_eq!(first.len(), 6, "{first:?}");
+    let mtime = |n: &str| fs::metadata(cache.join(n)).unwrap().modified().unwrap();
+    let before = mtime(&first[0]);
+    b.build().unwrap();
+    assert_eq!(mtime(&first[0]), before, "unchanged photos are not reprocessed");
+    fs::remove_file(b.dir.join("gallery/b.jpg")).unwrap();
+    b.build().unwrap();
+    assert_eq!(files(&cache).len(), 3);
+    assert!(!build::public_dir(&b.dir).join("gallery/b").exists());
+}
+
+#[test]
+fn gallery_slugs_never_collide() {
+    let b = gallery_blog();
+    write_image(&b.dir.join("gallery/tags.jpg"), 40, 40);
+    write_image(&b.dir.join("gallery/trip.jpg"), 40, 40);
+    write_image(&b.dir.join("gallery/trip/x.jpg"), 40, 40);
+    write_image(&b.dir.join("gallery/trip/x.png"), 40, 40);
+    b.build().unwrap();
+    let out = build::public_dir(&b.dir);
+    for p in ["gallery/tags-2/index.html", "gallery/trip/index.html", "gallery/trip-2/index.html", "gallery/trip/x/index.html", "gallery/trip/x-2/index.html"] {
+        assert!(out.join(p).exists(), "{p}");
     }
 }

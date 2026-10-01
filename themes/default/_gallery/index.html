@@ -1,0 +1,40 @@
+{% extends "_layouts/base.html" %}
+{% from "_gallery/macros.html" import grid, tag_chips, count %}
+{% block title %}{{ gallery.title }} · {{ site.title }}{% endblock %}
+{% block description %}{{ gallery.intro | plaintext or (gallery.title ~ " from " ~ site.title) }}{% endblock %}
+{% block main %}
+<style>{% include "_gallery/gallery.css" %}</style>
+<div class="gallery">
+  <header class="gallery-head">
+    <h1>{{ gallery.title }}</h1>
+    {% if gallery.intro %}<div class="gallery-intro">{{ gallery.intro }}</div>{% endif %}
+    {% if gallery.count %}<p class="gallery-meta">{{ count(gallery.count) }}{% if gallery.albums %} · {{ gallery.albums | length }} album{{ gallery.albums | length | pluralize }}{% endif %}</p>{% endif %}
+  </header>
+
+  {% if gallery.albums %}
+  <section class="gallery-section" aria-labelledby="gallery-albums">
+    <h2 class="gallery-label" id="gallery-albums">Albums</h2>
+    <div class="gallery-albums">
+      {% for a in gallery.albums %}
+      <a class="gallery-album" href="{{ a.url }}">
+        <span class="gallery-album-cover"><img src="{{ a.cover.thumb }}" width="{{ a.cover.thumb_width }}" height="{{ a.cover.thumb_height }}" alt="" loading="lazy" decoding="async"></span>
+        <span class="gallery-album-title">{{ a.title }}</span>
+        <span class="gallery-album-meta">{{ count(a.count) }}{% if a.date %} · {{ a.date | date("%B %Y") }}{% endif %}</span>
+      </a>
+      {% endfor %}
+    </div>
+  </section>
+  {% endif %}
+
+  {% if gallery.photos %}
+  <section class="gallery-section" aria-labelledby="gallery-all">
+    <h2 class="gallery-label" id="gallery-all">{% if gallery.albums %}All photos{% else %}Photos{% endif %}</h2>
+    {{ tag_chips(gallery.tags) }}
+    {{ grid(gallery.photos) }}
+  </section>
+  {% else %}
+  <p class="gallery-empty">No photos yet.</p>
+  {% endif %}
+</div>
+<script>{% include "_gallery/gallery.js" %}</script>
+{% endblock %}

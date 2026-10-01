@@ -29,6 +29,11 @@ title = "Many blogs, one folder"
 text = "Every folder in ~/Blogs is its own blog, with its own theme, settings and host. One breaking never touches the others."
 
 [[f]]
+icon = "📷"
+title = "A gallery, if you want one"
+text = "`folderblog gallery on`, then drop pictures into a folder. Subfolders become albums, a note beside a photo adds a caption and tags, and only resized copies go online."
+
+[[f]]
 icon = "🎨"
 title = "Themes with no limits"
 text = "Jinja templates that own every byte: any layout, JSON search indexes, templated CSS, SVG, a page per tag or year or series."
