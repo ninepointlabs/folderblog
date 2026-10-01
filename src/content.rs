@@ -275,7 +275,7 @@ pub fn slug_for(src: &Source) -> String {
 /// Markdown renderer), else the filename.
 pub fn title_fallback(src: &Source) -> String {
     let (_, rest) = split_date_prefix(&src.stem);
-    title_from_slug(rest)
+    title_from_slug(rest.trim_start_matches('#'))
 }
 
 /// Parse a date value from front matter. Date-only values are midnight local time.

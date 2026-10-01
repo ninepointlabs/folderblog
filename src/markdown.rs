@@ -84,6 +84,23 @@ pub fn rewrite_attrs(html: &str, f: &dyn Fn(&str) -> String) -> String {
         .into_owned()
 }
 
+/// A first line like `#Title` (no space, so not a CommonMark heading) is almost
+/// always meant as the title. Returns the source with the missing space added.
+fn space_leading_heading(src: &str) -> Option<String> {
+    let start = src.len() - src.trim_start_matches(['\n', '\r']).len();
+    let line = &src[start..];
+    let hashes = line.len() - line.trim_start_matches('#').len();
+    if !(1..=6).contains(&hashes) {
+        return None;
+    }
+    let next = line[hashes..].chars().next()?;
+    if next.is_whitespace() {
+        return None;
+    }
+    let at = start + hashes;
+    Some(format!("{} {}", &src[..at], &src[at..]))
+}
+
 pub fn render(
     src: &str,
     take_title: bool,
@@ -91,6 +108,13 @@ pub fn render(
     resolve: Resolver,
 ) -> Result<Rendered> {
     let mut out = Rendered::default();
+    let fixed;
+    let src = if take_title && let Some(f) = space_leading_heading(src) {
+        fixed = f;
+        fixed.as_str()
+    } else {
+        src
+    };
     let (main_src, has_more) = (src, src.contains(MORE_MARKER));
     out.has_more = has_more;
 
@@ -406,6 +430,16 @@ mod tests {
         assert_eq!(out.title.as_deref(), Some("Hello there"));
         assert!(!out.html.contains("<h1"));
         assert!(out.html.contains("Body text."));
+    }
+
+    #[test]
+    fn leading_hash_without_space_becomes_title() {
+        let out = r("#Welcome to it\n\nBody #text.\n");
+        assert_eq!(out.title.as_deref(), Some("Welcome to it"));
+        assert!(!out.html.contains("Welcome"));
+        assert!(out.html.contains("Body #text."));
+        let out = render("#tag line\n", false, None, &|u| u.to_string()).unwrap();
+        assert!(out.html.contains("<p>#tag line</p>"));
     }
 
     #[test]
