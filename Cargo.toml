@@ -1,6 +1,6 @@
 [package]
 name = "folderblog"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2024"
 rust-version = "1.89"
 description = "A folder is a blog: save Markdown into a folder and it is published to GitHub Pages (or anywhere) seconds later."
