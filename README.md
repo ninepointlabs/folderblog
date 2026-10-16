@@ -473,6 +473,13 @@ command = 'rsync -a --delete "$FOLDERBLOG_OUT/" me@server:/var/www/blog/'
 
 folderblog only publishes when the built site actually changed.
 
+**Blog folder kept in git?** Add `deploy_branch = "main"` at the top of `blog.toml`. Deploys
+then only happen while the folder is on that branch with no merge, rebase, cherry-pick or
+revert in progress, so switching branches or rebasing in the live folder can't publish
+unreviewed posts. A held deploy counts as a failed one: you get a notification, `folderblog
+status` shows the `held: …` reason, and the watcher's retry publishes once you're back on the
+branch. Uncommitted edits on the branch still publish.
+
 ## Commands
 
 | Command | What it does |
