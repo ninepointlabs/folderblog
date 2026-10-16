@@ -12,5 +12,5 @@ limit = 20
 
 [params]
 repo = "https://github.com/ninepointlabs/folderblog"
-version = "0.2.1"
+version = "0.2.2"
 releases = "https://github.com/ninepointlabs/folderblog/releases/latest"
