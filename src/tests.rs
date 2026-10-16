@@ -608,6 +608,96 @@ fn git_target_writes_cname_for_custom_domain() {
     assert_eq!(String::from_utf8_lossy(&show.stdout), "blog.example.com\n");
 }
 
+/// Run git in `dir` with no user or system config, so tests don't depend on the machine.
+fn git(dir: &Path, args: &[&str]) {
+    let ok = std::process::Command::new("git")
+        .args(["-c", "user.name=t", "-c", "user.email=t@x", "-c", "commit.gpgsign=false"])
+        .args(args)
+        .current_dir(dir)
+        .env("GIT_CONFIG_GLOBAL", "/dev/null")
+        .env("GIT_CONFIG_NOSYSTEM", "1")
+        .env_remove("GIT_DIR")
+        .env_remove("GIT_WORK_TREE")
+        .env_remove("GIT_INDEX_FILE")
+        .status()
+        .unwrap()
+        .success();
+    assert!(ok, "git {args:?}");
+}
+
+/// A blog with a `command` target that only touches a marker file next to the blog folder.
+fn held_blog(extra: &str) -> (Blog, PathBuf) {
+    let b = Blog::new(&format!("{extra}\n[deploy]\ntype = \"command\"\ncommand = 'touch \"$FOLDERBLOG_BLOG/../deployed\"'"));
+    b.write("posts/2024-01-01-a.md", "a");
+    b.build().unwrap();
+    let marker = b.dir.parent().unwrap().join("deployed");
+    (b, marker)
+}
+
+fn held_err(b: &Blog) -> String {
+    match crate::deploy::deploy(&b.dir, false) {
+        Ok(_) => panic!("deploy should be held"),
+        Err(e) => format!("{e:#}"),
+    }
+}
+
+#[test]
+fn deploy_branch_unset_deploys_without_git() {
+    let (b, marker) = held_blog("");
+    assert!(matches!(crate::deploy::deploy(&b.dir, false).unwrap(), crate::deploy::Outcome::Deployed(_)));
+    assert!(marker.exists());
+}
+
+#[test]
+fn deploy_branch_holds_outside_a_git_repo() {
+    let (b, marker) = held_blog("deploy_branch = \"main\"");
+    assert!(held_err(&b).starts_with("held: deploy_branch is set but"));
+    assert!(!marker.exists());
+}
+
+#[test]
+fn deploy_branch_deploys_on_the_branch_and_holds_elsewhere() {
+    let (b, marker) = held_blog("deploy_branch = \"main\"");
+    git(&b.dir, &["init", "-q", "-b", "main"]);
+    git(&b.dir, &["commit", "-q", "--allow-empty", "-m", "init"]);
+    crate::deploy::source_ready(&b.dir, "main").unwrap();
+
+    git(&b.dir, &["checkout", "-q", "-b", "draft"]);
+    assert_eq!(held_err(&b), r#"held: on branch "draft", deploys only from "main""#);
+    assert!(!marker.exists());
+    // Recorded as a failed deploy, which is what status shows and the watcher retries.
+    let d = crate::status::load(&b.dir).deploy.unwrap();
+    assert!(!d.ok && d.error.unwrap().starts_with("held: "));
+
+    git(&b.dir, &["checkout", "-q", "--detach", "main"]);
+    assert_eq!(held_err(&b), r#"held: detached HEAD, deploys only from "main""#);
+
+    git(&b.dir, &["checkout", "-q", "main"]);
+    fs::write(b.dir.join(".git/MERGE_HEAD"), "0000000000000000000000000000000000000000\n").unwrap();
+    assert_eq!(held_err(&b), "held: git operation in progress (MERGE_HEAD)");
+    assert!(!marker.exists());
+
+    fs::remove_file(b.dir.join(".git/MERGE_HEAD")).unwrap();
+    assert!(matches!(crate::deploy::deploy(&b.dir, false).unwrap(), crate::deploy::Outcome::Deployed(_)));
+    assert!(marker.exists());
+    assert!(crate::status::load(&b.dir).deploy.unwrap().ok);
+}
+
+#[test]
+fn deploy_branch_uses_the_worktree_git_dir() {
+    let (b, _) = held_blog("");
+    git(&b.dir, &["init", "-q", "-b", "main"]);
+    git(&b.dir, &["commit", "-q", "--allow-empty", "-m", "init"]);
+    let wt = b.dir.parent().unwrap().join("wt");
+    git(&b.dir, &["worktree", "add", "-q", "-b", "main2", wt.to_str().unwrap()]);
+    crate::deploy::source_ready(&wt, "main2").unwrap();
+    fs::create_dir_all(b.dir.join(".git/worktrees/wt/rebase-merge")).unwrap();
+    let e = crate::deploy::source_ready(&wt, "main2").unwrap_err().to_string();
+    assert_eq!(e, "held: git operation in progress (rebase-merge)");
+    // The main checkout's own state is separate.
+    crate::deploy::source_ready(&b.dir, "main").unwrap();
+}
+
 #[test]
 fn every_documented_route_key_parses() {
     let header = format!(

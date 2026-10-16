@@ -247,6 +247,23 @@ pub enum Outcome {
 pub fn deploy(blog_dir: &Path, force: bool) -> Result<Outcome> {
     let cfg = Config::load(blog_dir)?;
     let Some(dcfg) = &cfg.deploy else { return Ok(Outcome::NoTarget) };
+    if let Some(want) = &cfg.deploy_branch
+        && let Err(e) = source_ready(blog_dir, want)
+    {
+        // Record the hold as a failed deploy, so status shows it and the watcher retries.
+        let mut st = status::load(blog_dir);
+        st.deploy = Some(DeployStatus {
+            time: crate::util::now_rfc3339(),
+            ok: false,
+            target: target_for(dcfg).describe(),
+            detail: None,
+            error: Some(format!("{e:#}")),
+            hash: None,
+            auth_problem: None,
+        });
+        status::save(blog_dir, &st)?;
+        return Err(e);
+    }
     let target = target_for(dcfg);
     let out = crate::build::public_dir(blog_dir);
     if !out.is_dir() {
@@ -273,4 +290,33 @@ pub fn deploy(blog_dir: &Path, force: bool) -> Result<Outcome> {
     }
     status::save(blog_dir, &st)?;
     res.map(Outcome::Deployed)
+}
+
+/// Refuse to publish a blog folder whose git checkout is off `want` or mid git operation.
+pub fn source_ready(blog_dir: &Path, want: &str) -> Result<()> {
+    let git = |args: &[&str]| -> Option<String> {
+        let o = Command::new("git")
+            .args(args)
+            .current_dir(blog_dir)
+            .env_remove("GIT_DIR")
+            .env_remove("GIT_WORK_TREE")
+            .env_remove("GIT_INDEX_FILE")
+            .output()
+            .ok()?;
+        o.status.success().then(|| String::from_utf8_lossy(&o.stdout).trim().to_string())
+    };
+    let Some(git_dir) = git(&["rev-parse", "--absolute-git-dir"]) else {
+        bail!("held: deploy_branch is set but {} is not a git repo", blog_dir.display());
+    };
+    let git_dir = PathBuf::from(git_dir);
+    for busy in ["index.lock", "MERGE_HEAD", "CHERRY_PICK_HEAD", "REVERT_HEAD", "rebase-merge", "rebase-apply"] {
+        if git_dir.join(busy).exists() {
+            bail!("held: git operation in progress ({busy})");
+        }
+    }
+    match git(&["symbolic-ref", "--short", "-q", "HEAD"]) {
+        Some(b) if b == want => Ok(()),
+        Some(b) => bail!("held: on branch {b:?}, deploys only from {want:?}"),
+        None => bail!("held: detached HEAD, deploys only from {want:?}"),
+    }
 }

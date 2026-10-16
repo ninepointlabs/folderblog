@@ -629,6 +629,11 @@ Some more about a few of them:
 - **`[build]`** commands are for people who use extra tools, like Tailwind. They run
   inside the blog folder. They only ever come from `blog.toml`, never from a design, so
   a design you copied can't run programs on your computer.
+- **`deploy_branch`** is for blogs whose folder is also a git repository. Put
+  `deploy_branch = "main"` at the top (above `[feed]`). folderblog then only publishes while
+  the folder is on the `main` branch and git isn't in the middle of a merge or rebase. While
+  it waits, `folderblog status` says why it is held, and it publishes by itself within a few
+  minutes once you're back.
 - **`[params]`** is a free space. Anything you put there, your design can use.
 
 The newest, complete list is always in the blog's own `AGENTS.md` file.

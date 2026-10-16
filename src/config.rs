@@ -30,6 +30,10 @@ pub struct Config {
     pub gallery: GalleryConfig,
     #[serde(default)]
     pub deploy: Option<DeployConfig>,
+    /// When set, deploy only while the blog folder is a git checkout on this branch with no
+    /// merge, rebase or other git operation in progress.
+    #[serde(default)]
+    pub deploy_branch: Option<String>,
     #[serde(default)]
     pub params: toml::Table,
 }

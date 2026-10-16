@@ -255,6 +255,7 @@ pub const CONFIG_KEYS: &[Field] = &[
     f("deploy.author_name", "string", "git: commit author name (default `folderblog`)."),
     f("deploy.author_email", "string", "git: commit author email."),
     f("deploy.command", "string", "command: shell command; `$FOLDERBLOG_OUT` is the directory to publish."),
+    f("deploy_branch", "string", "Only deploy while the blog folder is a git checkout on this branch with no merge, rebase, cherry-pick or revert in progress; otherwise the deploy fails with `held: …` and is retried."),
     f("params", "table", "Anything you like; exposed to templates as `site.params` and `params`."),
 ];
 
