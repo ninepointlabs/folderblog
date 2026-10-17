@@ -106,6 +106,11 @@ curl -L https://github.com/ninepointlabs/folderblog/releases/latest/download/fol
 sudo install -Dm755 folderblog-0.2.2-x86_64-linux/folderblog /usr/local/bin/folderblog
 ```
 
+**With [autonomix-cli](https://github.com/ninepointlabs/autonomix-cli)**
+```sh
+autonomix-cli add https://github.com/ninepointlabs/folderblog
+```
+
 **From source** (Rust 1.89 or newer): `cargo install --git https://github.com/ninepointlabs/folderblog`
 
 Check it worked: `folderblog --version`.
