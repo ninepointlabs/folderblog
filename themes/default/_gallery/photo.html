@@ -2,7 +2,7 @@
 {% from "_gallery/macros.html" import tag_chips %}
 {% block title %}{{ photo.title or photo.alt or gallery.title }} · {{ site.title }}{% endblock %}
 {% block description %}{{ photo.caption | plaintext or photo.alt or gallery.title }}{% endblock %}
-{% block head %}<meta property="og:image" content="{{ photo.image | absolute_url }}">{% endblock %}
+{% set share_image = dict(url=photo.image | absolute_url, width=photo.width, height=photo.height) %}
 {% block main %}
 {% set heading = photo.title or (photo.album.title if photo.album else gallery.title) %}
 <style>{% include "_gallery/gallery.css" %}</style>

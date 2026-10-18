@@ -2,7 +2,7 @@
 {% from "_gallery/macros.html" import grid, tag_chips, count %}
 {% block title %}{{ album.title }} · {{ gallery.title }} · {{ site.title }}{% endblock %}
 {% block description %}{{ album.description | plaintext or album.title }}{% endblock %}
-{% block head %}<meta property="og:image" content="{{ album.cover.image | absolute_url }}">{% endblock %}
+{% set share_image = dict(url=album.cover.image | absolute_url, width=album.cover.width, height=album.cover.height) %}
 {% block main %}
 <style>{% include "_gallery/gallery.css" %}</style>
 <div class="gallery">

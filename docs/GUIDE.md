@@ -302,6 +302,7 @@ Here is every detail folderblog knows about:
 | `excerpt` or `summary` | Your own preview text |
 | `updated` | When you last changed it, like `2026-04-01` |
 | `weight` | For pages: a smaller number comes first in the menu |
+| `image` | The picture shown when someone shares the post, like `cover.jpg` (beside the post) or a web address |
 
 You can add **any other detail you like**, such as `mood: happy`. A design can show it.
 
@@ -385,6 +386,14 @@ next publish.
 Anything in `static/` is put online exactly as it is, at the same place. For example,
 `static/favicon.ico` becomes `/favicon.ico`, and `static/files/recipe.pdf` becomes
 `/files/recipe.pdf`. Use it for the little icon in the browser tab, downloads, and so on.
+
+Two names are special:
+
+- `static/og-default.png` is the picture shown when someone shares a page that has no
+  `image` of its own (on social media or in a chat). 1200 by 630 pixels works well.
+- `static/robots.txt` tells search engines what to look at. You don't need one: without
+  it, folderblog writes one that lets them see everything and tells them where your
+  sitemap is.
 
 ## The data folder
 
@@ -591,6 +600,7 @@ description = "Notes from my workbench"       # a sentence about your blog
 author = "Your Name"                          # who writes it
 language = "en"                               # the language, like en, fr, de
 permalink = "/{year}/{month}/{slug}/"         # the pattern for post addresses
+image = "/img/share.png"                      # the picture for shared links (default: static/og-default.png)
 
 [feed]
 limit = 20                                    # how many posts go in the RSS feed

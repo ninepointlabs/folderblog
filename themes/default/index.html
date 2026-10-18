@@ -5,6 +5,8 @@ url = "{% if pager.number == 1 %}/{% else %}/page/{{ pager.number }}/{% endif %}
 ---#}
 {% extends "_layouts/base.html" %}
 {% block title %}{% if pager.number > 1 %}Page {{ pager.number }} · {% endif %}{{ site.title }}{% endblock %}
+{# The home page's one h1 is the site title. #}
+{% block site_title %}<h1 class="site-name"><a class="site-title" href="{{ site.url }}">{{ site.title }}</a></h1>{% endblock %}
 {% block main %}
 {% if site.description and pager.number == 1 %}<p class="intro">{{ site.description }}</p>{% endif %}
 {% for p in pager.items %}

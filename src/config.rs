@@ -34,6 +34,9 @@ pub struct Config {
     /// merge, rebase or other git operation in progress.
     #[serde(default)]
     pub deploy_branch: Option<String>,
+    /// Default share image (path or URL) for pages without their own front matter `image`.
+    #[serde(default)]
+    pub image: Option<String>,
     #[serde(default)]
     pub params: toml::Table,
 }

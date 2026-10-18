@@ -38,6 +38,7 @@ body {
   padding: 2.5rem 0 1.5rem; border-bottom: 1px solid var(--rule); margin-bottom: 2.5rem;
 }
 .site-title { font-weight: 700; font-size: 1.15rem; color: var(--text); text-decoration: none; }
+.site-name { margin: 0; font-size: inherit; line-height: inherit; letter-spacing: normal; }
 nav a { margin-right: 1rem; color: var(--muted); text-decoration: none; font-size: .9rem; }
 nav a:last-child { margin-right: 0; }
 nav a:hover, nav a[aria-current] { color: var(--text); }

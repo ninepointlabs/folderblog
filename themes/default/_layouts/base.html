@@ -4,7 +4,27 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>{% block title %}{{ site.title }}{% endblock %}</title>
-{% if site.description %}<meta name="description" content="{% block description %}{{ site.description }}{% endblock %}">{% endif %}
+{# Search and link previews. Layouts can override the `description` block, and set
+    `og_type` or `share_image` (a dict of url, width, height) before extending this file. -#}
+{% if false %}{% block description %}{{ item.summary if item is defined and item.kind is defined and item.kind in ["post", "page"] and item.summary else site.description }}{% endblock %}{% endif -%}
+{% set is_item = item is defined and item.kind is defined and item.kind in ["post", "page"] -%}
+{% set description = self.description() | trim -%}
+{% set canonical = item.permalink if item is defined and item.permalink is defined and item.permalink else current_url | absolute_url -%}
+{% if share_image is not defined %}{% set share_image = dict(url=item.image, width=item.image_width, height=item.image_height) if is_item and item.image else dict(url=site.image, width=site.image_width, height=site.image_height) %}{% endif -%}
+{% if description %}<meta name="description" content="{{ description }}">{% endif %}
+<link rel="canonical" href="{{ canonical }}">
+<meta property="og:site_name" content="{{ site.title }}">
+<meta property="og:title" content="{{ item.title if is_item else self.title() | trim }}">
+{% if description %}<meta property="og:description" content="{{ description }}">{% endif %}
+<meta property="og:type" content="{{ og_type if og_type is defined else "website" }}">
+<meta property="og:url" content="{{ canonical }}">
+{% if share_image.url %}<meta property="og:image" content="{{ share_image.url }}">
+{% if share_image.width and share_image.height %}<meta property="og:image:width" content="{{ share_image.width }}">
+<meta property="og:image:height" content="{{ share_image.height }}">
+{% endif %}<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:image" content="{{ share_image.url }}">
+{% else %}<meta name="twitter:card" content="summary">
+{% endif %}
 <link rel="stylesheet" href="{{ '/assets/style.css' | url }}">
 <link rel="stylesheet" href="{{ '/assets/highlight.css' | url }}">
 <link rel="alternate" type="application/rss+xml" title="{{ site.title }}" href="{{ site.feed_url }}">
@@ -12,7 +32,7 @@
 </head>
 <body>
 <header class="site-header">
-  <a class="site-title" href="{{ site.url }}">{{ site.title }}</a>
+  {% block site_title %}<a class="site-title" href="{{ site.url }}">{{ site.title }}</a>{% endblock %}
   <nav>
     {% for p in pages %}<a href="{{ p.url }}"{% if p.url == current_url %} aria-current="page"{% endif %}>{{ p.title }}</a>{% endfor %}
     {% if gallery.enabled and gallery.count %}<a href="{{ gallery.url }}"{% if current_url.startswith(gallery.url) %} aria-current="page"{% endif %}>{{ gallery.title }}</a>{% endif %}
