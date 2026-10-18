@@ -29,6 +29,8 @@ pub struct Config {
     #[serde(default)]
     pub gallery: GalleryConfig,
     #[serde(default)]
+    pub analytics: AnalyticsConfig,
+    #[serde(default)]
     pub deploy: Option<DeployConfig>,
     /// When set, deploy only while the blog folder is a git checkout on this branch with no
     /// merge, rebase or other git operation in progress.
@@ -85,6 +87,24 @@ pub struct GalleryConfig {
 impl Default for GalleryConfig {
     fn default() -> Self {
         GalleryConfig { enabled: false, url: default_gallery_url() }
+    }
+}
+
+/// Optional, off by default: cookie-free GoatCounter page counts, added to built HTML only.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct AnalyticsConfig {
+    /// Base URL of a GoatCounter site, e.g. "https://stats.example.com". Empty means off.
+    #[serde(default)]
+    pub goatcounter: String,
+    /// Count each page as "host/path", so one GoatCounter site can serve several blogs.
+    #[serde(default = "default_true")]
+    pub host_prefix: bool,
+}
+
+impl Default for AnalyticsConfig {
+    fn default() -> Self {
+        AnalyticsConfig { goatcounter: String::new(), host_prefix: true }
     }
 }
 
@@ -167,6 +187,14 @@ impl Config {
             bail!("gallery.url must be a path like \"/gallery/\" (got {:?})", cfg.gallery.url);
         }
         cfg.gallery.url = format!("/{g}/");
+        let gc = cfg.analytics.goatcounter.trim().trim_end_matches('/');
+        let host = gc.strip_prefix("https://").unwrap_or("");
+        if !gc.is_empty()
+            && (host.is_empty() || host.starts_with('/') || gc.contains(|c: char| c.is_whitespace() || "\"'<>`?#\\".contains(c)))
+        {
+            bail!("analytics.goatcounter must be an https:// URL like \"https://stats.example.com\" (got {:?})", cfg.analytics.goatcounter);
+        }
+        cfg.analytics.goatcounter = gc.to_string();
         Ok(cfg)
     }
 

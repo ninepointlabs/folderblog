@@ -519,7 +519,9 @@ fn every_documented_field_exists() {
 #[test]
 fn every_documented_config_key_parses() {
     let value = |k: &crate::contract::Field| -> String {
-        if k.ty.starts_with("list") {
+        if k.name == "analytics.goatcounter" {
+            "'https://stats.example.com'".into()
+        } else if k.ty.starts_with("list") {
             "['x']".into()
         } else if k.ty == "int" {
             "3".into()
@@ -1025,4 +1027,132 @@ fn default_theme_has_search_and_preview_tags() {
     let home = read("index.html");
     assert_eq!(home.matches("<h1").count(), 1, "{home}");
     assert!(home.contains(&format!("<link rel=\"canonical\" href=\"{base}/\">")));
+}
+
+// ---------- analytics ----------
+
+const GC: &str = "https://goatcounter-production-af4b.up.railway.app";
+
+fn analytics_blog(toml_extra: &str) -> Blog {
+    let b = Blog::new(&format!("[gallery]\nenabled = true\n{toml_extra}"));
+    let head = |body: &str| format!("<html><head><title>t</title></head><body>{body}</body></html>");
+    b.write("theme/_layouts/post.html", &head("{{ post.title }}"));
+    b.write("theme/_layouts/page.html", &head("{{ page.title }}"));
+    b.write("theme/index.html", &head("home"));
+    b.write("theme/archive.html", &head("archive"));
+    b.write("theme/404.html", &head("missing"));
+    b.write("theme/tag.html", &format!("{{#---\neach = \"tags\"\nas = \"tag\"\nurl = \"/tags/{{{{ tag.slug }}}}/\"\n---#}}{}", head("{{ tag.name }}")));
+    b.write("theme/style.css.jinja", "body{}</head>");
+    b.write("theme/_gallery/index.html", &head("gallery"));
+    for t in crate::gallery::TEMPLATES.iter().filter(|t| !t.ends_with("/index.html")) {
+        b.write(&format!("theme/{t}"), &head("g"));
+    }
+    write_image(&b.dir.join("gallery/a.jpg"), 40, 40);
+    b.write("posts/2024-01-02-hello.md", "---\ntags: [Rust]\n---\n# Hello\n\nx");
+    b.write("pages/about.md", "# About\n\nx");
+    b.write("static/plain.html", "<html><head></head><body>static</body></html>");
+    b
+}
+
+const PAGE_TYPES: &[&str] = &[
+    "index.html",
+    "2024/01/hello/index.html",
+    "about/index.html",
+    "archive.html",
+    "tags/rust/index.html",
+    "404.html",
+    "gallery/index.html",
+    "gallery/a/index.html",
+];
+
+#[test]
+fn analytics_config_absent_empty_valid_invalid() {
+    let base = "title='t'\nbase_url='https://x.com'\n";
+    let parse = |extra: &str| crate::config::Config::parse(&format!("{base}{extra}"));
+    let c = parse("").unwrap();
+    assert!(c.analytics.goatcounter.is_empty() && c.analytics.host_prefix);
+    assert!(parse("[analytics]\ngoatcounter = ''").unwrap().analytics.goatcounter.is_empty());
+    let c = parse(&format!("[analytics]\ngoatcounter = '{GC}/'\nhost_prefix = false")).unwrap();
+    assert_eq!(c.analytics.goatcounter, GC);
+    assert!(!c.analytics.host_prefix);
+    for bad in ["http://stats.example.com", "stats.example.com", "https://", "https:///x", "https://a.com/\"><script>", "https://a b.com", "https://a.com/?x=1"] {
+        let err = format!("{:#}", parse(&format!("[analytics]\ngoatcounter = '{bad}'")).unwrap_err());
+        assert!(err.contains("analytics.goatcounter"), "{bad}: {err}");
+    }
+    assert!(parse("[analytics]\ngoatcounter = 'https://a.com'\ncookies = true").is_err());
+    // `folderblog check` flags a bad value and passes without one.
+    let b = analytics_blog("[analytics]\ngoatcounter = 'http://insecure.example.com'");
+    let rep = crate::check::check(&b.dir, None).unwrap();
+    assert!(rep.errors.iter().any(|e| e.contains("analytics.goatcounter")), "{:?}", rep.errors);
+    let b = analytics_blog("");
+    let rep = crate::check::check(&b.dir, None).unwrap();
+    assert!(rep.errors.is_empty(), "{:?}", rep.errors);
+}
+
+#[test]
+fn analytics_is_injected_into_every_rendered_page() {
+    let b = analytics_blog(&format!("[analytics]\ngoatcounter = '{GC}'"));
+    b.build().unwrap();
+    let want = format!(
+        "<script>window.goatcounter={{path:function(p){{return location.host+p}}}}</script>\n<script data-goatcounter=\"{GC}/count\" async src=\"{GC}/count.js\"></script>\n</head>"
+    );
+    for p in PAGE_TYPES {
+        let html = b.read_out(p);
+        assert!(html.contains(&want), "{p}: {html}");
+        assert_eq!(html.matches("data-goatcounter").count(), 1, "{p}");
+    }
+    // Copied files and non-HTML templates are untouched.
+    assert_eq!(b.read_out("plain.html"), "<html><head></head><body>static</body></html>");
+    assert_eq!(b.read_out("style.css"), "body{}</head>");
+    assert!(!b.read_out("feed.xml").contains("goatcounter"));
+
+    let b = analytics_blog(&format!("[analytics]\ngoatcounter = '{GC}'\nhost_prefix = false"));
+    b.build().unwrap();
+    let html = b.read_out("index.html");
+    assert!(!html.contains("window.goatcounter") && html.contains(&format!("<script data-goatcounter=\"{GC}/count\"")), "{html}");
+}
+
+#[test]
+fn analytics_off_by_default_changes_nothing() {
+    let off = analytics_blog("");
+    off.build().unwrap();
+    let empty = analytics_blog("[analytics]\ngoatcounter = ''");
+    empty.build().unwrap();
+    for p in PAGE_TYPES {
+        let html = off.read_out(p);
+        assert!(!html.contains("goatcounter"), "{p}");
+        assert_eq!(html, empty.read_out(p), "{p}");
+    }
+}
+
+#[test]
+fn analytics_not_doubled_and_escaped() {
+    let b = analytics_blog(&format!("[analytics]\ngoatcounter = '{GC}'"));
+    b.write("theme/index.html", "<html><head><script data-goatcounter=\"x\" async src=\"x.js\"></script></head></html>");
+    b.write("theme/archive.html", "<HTML><HEAD></HEAD></HTML><head></head>");
+    b.write("theme/404.html", "<p>no head here</p>");
+    b.build().unwrap();
+    assert_eq!(b.read_out("index.html").matches("data-goatcounter").count(), 1);
+    let a = b.read_out("archive.html");
+    assert!(a.find("data-goatcounter").unwrap() < a.find("</HEAD>").unwrap(), "{a}");
+    assert_eq!(a.matches("data-goatcounter").count(), 1);
+    assert_eq!(b.read_out("404.html"), "<p>no head here</p>");
+    let s = crate::render::goatcounter_snippet("https://a.com/x&y", true);
+    assert!(s.contains("\"https://a.com/x&amp;y/count\""), "{s}");
+}
+
+#[test]
+fn analytics_never_in_preview_drafts_or_fixtures() {
+    let b = analytics_blog(&format!("[analytics]\ngoatcounter = '{GC}'"));
+    let tmp = tempfile::tempdir().unwrap();
+    let out = tmp.path().join("preview");
+    // The options `folderblog preview` builds with.
+    build::build(&b.dir, Some(&out), LoadOptions { drafts: true, ..Default::default() }, false).unwrap();
+    for p in PAGE_TYPES {
+        let html = fs::read_to_string(out.join(p)).unwrap();
+        assert!(!html.contains("goatcounter"), "{p}");
+    }
+    let site = Site::load(&b.dir, LoadOptions { fixtures: Some("stress".into()), ..Default::default() }).unwrap();
+    assert!(site.analytics_snippet().is_none());
+    assert!(b.site().analytics_snippet().is_some());
 }

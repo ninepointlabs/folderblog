@@ -399,14 +399,30 @@ impl Site {
         }
     }
 
+    /// The GoatCounter tags for rendered HTML, when `[analytics] goatcounter` is set and
+    /// this is a publishable build (not a preview, draft or fixture build).
+    pub fn analytics_snippet(&self) -> Option<String> {
+        let a = &self.cfg.analytics;
+        if a.goatcounter.is_empty() || self.opts.drafts || self.opts.fixtures.is_some() {
+            return None;
+        }
+        Some(goatcounter_snippet(&a.goatcounter, a.host_prefix))
+    }
+
     /// Render the plan into `dir` (which must not exist). Fails if any output fails.
     pub fn write_to(&self, plan: &Plan, dir: &Path) -> Result<usize> {
         let mut errors = plan.errors.clone();
         std::fs::create_dir_all(dir)?;
+        let analytics = self.analytics_snippet();
         let mut n = 0;
         for o in &plan.outputs {
             match self.render_output(o) {
-                Ok(bytes) => {
+                Ok(mut bytes) => {
+                    if let (Some(snippet), Content::Render { .. }) = (&analytics, &o.content)
+                        && (o.path.ends_with(".html") || o.path.ends_with(".htm"))
+                    {
+                        bytes = inject_head(bytes, snippet);
+                    }
                     let target = dir.join(&o.path);
                     if let Some(p) = target.parent() {
                         if let Err(e) = std::fs::create_dir_all(p) {
@@ -427,6 +443,26 @@ impl Site {
             bail!(BuildErrors(errors));
         }
         Ok(n)
+    }
+}
+
+/// GoatCounter's counting script, optionally counting each page as "host/path".
+pub fn goatcounter_snippet(base: &str, host_prefix: bool) -> String {
+    let base = crate::util::html_escape(base);
+    let prefix = if host_prefix { "<script>window.goatcounter={path:function(p){return location.host+p}}</script>\n" } else { "" };
+    format!("{prefix}<script data-goatcounter=\"{base}/count\" async src=\"{base}/count.js\"></script>\n")
+}
+
+/// Insert `snippet` before the first `</head>`, unless the page has no head or already
+/// loads GoatCounter itself.
+pub fn inject_head(html: Vec<u8>, snippet: &str) -> Vec<u8> {
+    let Ok(text) = std::str::from_utf8(&html) else { return html };
+    if text.contains("data-goatcounter") {
+        return html;
+    }
+    match text.to_ascii_lowercase().find("</head>") {
+        Some(i) => [&html[..i], snippet.as_bytes(), &html[i..]].concat(),
+        None => html,
     }
 }
 
