@@ -77,6 +77,8 @@ without touching the engine.
 - Search and link-preview tags out of the box: the default theme gives every page a
   description, canonical link, OpenGraph and Twitter card tags, and posts BlogPosting
   JSON-LD and their own share image.
+- Optional, off by default: cookie-free [GoatCounter](https://www.goatcounter.com) page
+  counts with two lines in `blog.toml` (see [Analytics](#analytics-optional)).
 - `preview` with live reload, `check` (template errors with file:line, feed
   validation, broken links), `data` (the exact template context for any URL), and
   fixture content for testing themes against edge cases.
@@ -456,11 +458,35 @@ ignore = []                                      # paths that never trigger a re
 enabled = false                                  # `folderblog gallery on` turns it on
 url = "/gallery/"
 
+# Optional, off by default. See "Analytics" below.
+# [analytics]
+# goatcounter = "https://stats.example.com"
+
 [params]                                         # anything you like, for templates
 tagline = "Notes from the workbench"
 ```
 
 The full, always-current reference is the `blog.toml` section of each blog's `AGENTS.md`.
+
+### Analytics (optional)
+
+Off by default: without an `[analytics]` section the output is exactly what it always was.
+To count page views with [GoatCounter](https://www.goatcounter.com), which is cookie-free and
+records no personal data, point it at your GoatCounter site, self-hosted or hosted:
+
+```toml
+[analytics]
+goatcounter = "https://stats.example.com"   # base URL of your GoatCounter site (https:// only)
+# host_prefix = true                        # default: count pages as "host/path"
+```
+
+`build`, `deploy` and `watch` then add GoatCounter's two `<script>` tags just before `</head>`
+of every rendered HTML page (posts, pages, home, archives, tags, gallery, 404), whatever the
+theme. `host_prefix` lets one GoatCounter site count several blogs and tell them apart; set it
+to `false` for plain paths. `preview` and `build --drafts` / `--fixtures` never add it, files in
+`static/` are copied untouched, and a page that already includes `data-goatcounter` is left
+alone. If your theme sets a Content-Security-Policy, allow the GoatCounter host for scripts
+and images.
 
 ## Other hosts
 

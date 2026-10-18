@@ -75,6 +75,17 @@ The whole sky went orange for about ten minutes.
 
 Only resized copies are published, never your originals, so the GPS location in your phone's photos stays private.
 
+### Visitor counts (optional)
+
+Off by default. To count page views with [GoatCounter](https://www.goatcounter.com), which is cookie-free and keeps no personal data, add your GoatCounter site (self-hosted or hosted) to `blog.toml`:
+
+```toml
+[analytics]
+goatcounter = "https://stats.example.com"
+```
+
+Published builds then add GoatCounter's script to every page, with any theme. Pages are counted as `host/path`, so one GoatCounter site can serve several blogs (`host_prefix = false` turns that off). `folderblog preview` never counts, and files in `static/` are copied untouched. Needs a folderblog newer than 0.2.2.
+
 ## 5. Make it yours
 
 A theme is the `theme/` folder in the blog. Files ending in `.html` or `.jinja` are templates rendered to the same path, and everything else is copied. A route header makes one template produce many pages:

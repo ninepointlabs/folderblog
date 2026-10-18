@@ -624,6 +624,10 @@ post = []                                     # commands to run after building
 [watch]
 ignore = []                                   # folders to never react to
 
+[analytics]                                   # optional, off unless you add it
+goatcounter = "https://stats.example.com"     # your GoatCounter address
+# host_prefix = true                          # count pages as "yourblog.com/page"
+
 [params]                                      # anything you like, for your design
 tagline = "Small notes, often"
 ```
@@ -644,9 +648,34 @@ Some more about a few of them:
   the folder is on the `main` branch and git isn't in the middle of a merge or rebase. While
   it waits, `folderblog status` says why it is held, and it publishes by itself within a few
   minutes once you're back.
+- **`[analytics]`** is optional and off unless you add it. See *Counting visitors* below.
 - **`[params]`** is a free space. Anything you put there, your design can use.
 
 The newest, complete list is always in the blog's own `AGENTS.md` file.
+
+## Counting visitors (optional)
+
+Want to know how many people read your posts? folderblog can add
+[GoatCounter](https://www.goatcounter.com), a simple visitor counter. It is **off unless you
+turn it on**. GoatCounter uses no cookies and keeps no personal data about your readers. You
+can run it yourself or use the hosted one at goatcounter.com.
+
+Open `blog.toml` and add, with your own GoatCounter address:
+
+```toml
+[analytics]
+goatcounter = "https://stats.example.com"
+```
+
+The address must start with `https://`. From the next publish on, every page of your blog
+counts a visit, whichever design you use. Things to know:
+
+- Each visit is counted as `yourblog.com/the-page`, so one GoatCounter can count several blogs
+  and still tell them apart. To count just `/the-page`, add `host_prefix = false`.
+- `folderblog preview` never counts, so looking at your own blog doesn't add visits.
+- Files in the `static` folder are put online untouched, so they are not counted.
+- `folderblog check` tells you if the address is wrong.
+- To turn it off again, delete the `[analytics]` lines.
 
 ## Changing how it looks
 

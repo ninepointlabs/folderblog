@@ -250,6 +250,8 @@ pub const CONFIG_KEYS: &[Field] = &[
     f("watch.ignore", "list of paths", "Paths (relative to the blog folder, prefix match) whose changes never trigger a rebuild."),
     f("gallery.enabled", "bool", "Publish the pictures in `gallery/` as a photo gallery (default false). `folderblog gallery on` sets it and adds `gallery/` and the templates."),
     f("gallery.url", "string", "Where the gallery lives (default `/gallery/`)."),
+    f("analytics.goatcounter", "string", "Optional, off by default: base URL of a GoatCounter site (`https://` only), e.g. `https://stats.example.com`. When set, `folderblog build`, `deploy` and `watch` add GoatCounter's cookie-free counting script before `</head>` of every rendered HTML page; previews, draft and fixture builds never do. Pages that already contain `data-goatcounter` are left alone."),
+    f("analytics.host_prefix", "bool", "Count pages as `host/path` so one GoatCounter site can serve several blogs (default true)."),
     f("deploy.type", "string", "`github`, `git` or `command`."),
     f("deploy.owner", "string", "github: account or org that owns the repo (set by `folderblog new` when logged in)."),
     f("deploy.repo", "string", "github: repo name. Created, with Pages turned on, at the first deploy."),
@@ -303,7 +305,9 @@ hidden base theme: if a file is not in `theme/`, it does not exist.
    The engine also writes a `/robots.txt` that allows everything and names the sitemap,
    unless `static/robots.txt` or a theme file publishes that path instead.
 2. The engine never adds markup, classes, styles or scripts to theme output.
-   (Only `folderblog preview` injects a live-reload `<script>`, and only while serving.)
+   (Only `folderblog preview` injects a live-reload `<script>`, and only while serving.
+   If you set `[analytics] goatcounter` in blog.toml, built pages also get the GoatCounter
+   `<script>` tags before `</head>`; see the config table.)
 3. Two outputs on one path is a build error that names both producers.
 4. Never edit `posts/`, `pages/` or `drafts/` to make a design work. Those are the
    author's writing. Use `folderblog preview --fixtures stress` to test edge cases instead.
