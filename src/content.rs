@@ -99,6 +99,10 @@ pub fn discover(root: &Path, include_drafts: bool) -> Result<Discovered> {
         }
         walk_section(root, &base, &base, kind, draft, None, &mut out)?;
     }
+    // Front-matter `draft: true` items are preview-only, like drafts/.
+    if !include_drafts {
+        out.sources.retain(|s| !s.draft);
+    }
     out.sources.sort_by(|a, b| a.rel.cmp(&b.rel));
     Ok(out)
 }

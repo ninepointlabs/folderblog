@@ -132,6 +132,8 @@ fn drafts_record_no_date_and_only_appear_in_preview() {
     assert!(!st.contains("wip"), "drafts must not record first-seen dates");
     b.build().unwrap();
     assert!(!b.read_out("feed.xml").contains("hidden"));
+    assert!(b.site().posts.iter().all(|p| p.slug != "hidden"), "draft: true stays out of real builds");
+    assert!(!b.read_out("index.html").contains("hidden"));
 }
 
 #[test]
