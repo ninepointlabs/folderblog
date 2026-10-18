@@ -921,3 +921,108 @@ fn gallery_slugs_never_collide() {
         assert!(out.join(p).exists(), "{p}");
     }
 }
+
+// ---------- search and link previews ----------
+
+#[test]
+fn share_images_from_front_matter_and_the_site_default() {
+    let b = Blog::new("");
+    b.write("theme/_layouts/post.html", "{{ post.image }}|{{ post.image_width }}x{{ post.image_height }}");
+    b.write("theme/index.html", "{{ site.image }}|{{ site.image_width }}x{{ site.image_height }}");
+    write_image(&b.dir.join("posts/trip/hero.jpg"), 40, 30);
+    b.write("posts/trip/index.md", "---\ndate: 2024-02-03\nimage: hero.jpg\n---\nx");
+    b.write("posts/2024-01-01-ext.md", "---\nimage: https://cdn.x.org/a.png\n---\nx");
+    b.write("posts/2024-01-02-none.md", "x");
+    b.write("posts/2024-01-03-missing.md", "---\nimage: nope.png\n---\nx");
+    // No og-default.png and no blog.toml `image`: no site image.
+    b.build().unwrap();
+    assert_eq!(b.read_out("index.html"), "|x");
+    write_image(&b.dir.join("static/og-default.png"), 12, 6);
+    b.build().unwrap();
+    assert_eq!(b.read_out("2024/02/trip/index.html"), "https://example.com/2024/02/trip/hero.jpg|40x30");
+    assert_eq!(b.read_out("2024/01/ext/index.html"), "https://cdn.x.org/a.png|x");
+    assert_eq!(b.read_out("2024/01/none/index.html"), "|x");
+    assert_eq!(b.read_out("index.html"), "https://example.com/og-default.png|12x6");
+    assert!(b.site().warnings.iter().any(|w| w.contains("missing.md: image \"nope.png\"")), "{:?}", b.site().warnings);
+
+    // blog.toml `image` wins, resolved under the base path.
+    let b = Blog::new("image = \"/img/share.png\"");
+    b.write("blog.toml", "title = \"T\"\nbase_url = \"https://x.org/blog\"\nimage = \"/img/share.png\"\n");
+    b.write("theme/index.html", "{{ site.image }}|{{ site.image_width }}");
+    write_image(&b.dir.join("static/img/share.png"), 9, 9);
+    b.build().unwrap();
+    assert_eq!(b.read_out("index.html"), "https://x.org/blog/img/share.png|9");
+}
+
+#[test]
+fn robots_txt_by_default_unless_the_blog_has_one() {
+    let b = Blog::new("");
+    b.build().unwrap();
+    assert_eq!(b.read_out("robots.txt"), "User-agent: *\nAllow: /\n\nSitemap: https://example.com/sitemap.xml\n");
+    assert!(!b.read_out("sitemap.xml").contains("robots"));
+    b.write("static/robots.txt", "User-agent: *\nDisallow: /secret/\n");
+    b.build().unwrap();
+    assert_eq!(b.read_out("robots.txt"), "User-agent: *\nDisallow: /secret/\n");
+    fs::remove_file(b.dir.join("static/robots.txt")).unwrap();
+    b.write("theme/robots.txt.jinja", "Sitemap: {{ site.base_url }}/sitemap.xml\n");
+    b.build().unwrap();
+    assert_eq!(b.read_out("robots.txt"), "Sitemap: https://example.com/sitemap.xml\n");
+}
+
+#[test]
+fn default_theme_has_search_and_preview_tags() {
+    let (_t, dir) = new_default_blog();
+    let cfg = fs::read_to_string(dir.join("blog.toml")).unwrap();
+    let cfg = cfg.replace("author = \"\"", "author = \"Ann <A>\"").replace("description = \"\"", "description = \"About & more\"");
+    fs::write(dir.join("blog.toml"), &cfg).unwrap();
+    fs::create_dir_all(dir.join("posts/trip")).unwrap();
+    write_image(&dir.join("posts/trip/hero.jpg"), 40, 30);
+    fs::write(dir.join("posts/trip/index.md"), "---\ntitle: Tom & \"Jerry\" </script>\ndate: 2024-05-01\nupdated: 2024-06-01\nimage: hero.jpg\n---\nWent & came back.\n").unwrap();
+    fs::write(dir.join("posts/2024-04-01-plain.md"), "Just text.\n").unwrap();
+    let rep = crate::check::check(&dir, None).unwrap();
+    assert!(rep.errors.is_empty(), "{:#?}", rep.errors);
+    let out = build::build(&dir, None, LoadOptions { persist_state: true, ..Default::default() }, true).unwrap().out_dir;
+    let read = |p: &str| fs::read_to_string(out.join(p)).unwrap();
+    let base = cfg.lines().find_map(|l| l.strip_prefix("base_url = \"")).unwrap().trim_end_matches('"').to_string();
+
+    let post = read("2024/05/trip/index.html");
+    let permalink = format!("{base}/2024/05/trip/");
+    for tag in [
+        "<meta name=\"description\" content=\"Went &amp; came back.\">".to_string(),
+        format!("<link rel=\"canonical\" href=\"{permalink}\">"),
+        "<meta property=\"og:type\" content=\"article\">".into(),
+        "<meta property=\"og:title\" content=\"Tom &amp; &quot;Jerry&quot; &lt;/script&gt;\">".into(),
+        format!("<meta property=\"og:image\" content=\"{permalink}hero.jpg\">"),
+        "<meta property=\"og:image:width\" content=\"40\">".into(),
+        format!("<meta name=\"twitter:image\" content=\"{permalink}hero.jpg\">"),
+        "<meta name=\"twitter:card\" content=\"summary_large_image\">".into(),
+    ] {
+        assert!(post.contains(&tag), "post is missing {tag}\n{post}");
+    }
+    let ld = post.split("<script type=\"application/ld+json\">").nth(1).unwrap().split("</script>").next().unwrap();
+    assert!(!ld.contains('<'), "{ld}");
+    let ld: serde_json::Value = serde_json::from_str(ld).unwrap_or_else(|e| panic!("{e}: {ld}"));
+    assert_eq!(ld["@type"], "BlogPosting");
+    assert_eq!(ld["headline"], "Tom & \"Jerry\" </script>");
+    assert_eq!(ld["mainEntityOfPage"]["@id"], permalink.as_str());
+    assert_eq!(ld["image"], format!("{permalink}hero.jpg"));
+    assert_eq!(ld["author"]["name"], "Ann <A>");
+    assert!(ld["datePublished"].as_str().unwrap().starts_with("2024-05-01"));
+    assert!(ld["dateModified"].as_str().unwrap().starts_with("2024-06-01"));
+
+    // No image anywhere: no og:image, a small card, and no image in JSON-LD.
+    let plain = read("2024/04/plain/index.html");
+    assert!(!plain.contains("og:image") && plain.contains("content=\"summary\""), "{plain}");
+    assert!(!plain.contains("\"image\""), "{plain}");
+
+    // Every page: description, canonical, OpenGraph basics and a Twitter card.
+    for p in ["index.html", "archive/index.html", "tags/index.html", "2024/04/plain/index.html"] {
+        let html = read(p);
+        for needle in ["<meta name=\"description\" content=\"", "<link rel=\"canonical\" href=\"https://", "og:title", "og:description", "og:type", "og:url", "og:site_name", "twitter:card"] {
+            assert!(html.contains(needle), "{p} is missing {needle}");
+        }
+    }
+    let home = read("index.html");
+    assert_eq!(home.matches("<h1").count(), 1, "{home}");
+    assert!(home.contains(&format!("<link rel=\"canonical\" href=\"{base}/\">")));
+}

@@ -39,8 +39,20 @@ pub struct Item {
     pub tags: Vec<String>,
     /// Attached files: (absolute source, site-relative output path).
     pub files: Vec<(PathBuf, String)>,
+    /// Front matter `image`, if set.
+    pub image: Option<Image>,
     pub value: Value,
 }
+
+/// A share image: absolute URL, plus its size when it is a local file folderblog can read.
+#[derive(Debug, Clone)]
+pub struct Image {
+    pub url: String,
+    pub size: Option<(u32, u32)>,
+}
+
+/// Where the site default share image comes from when blog.toml sets no `image`.
+pub const DEFAULT_IMAGE: &str = "og-default.png";
 
 pub struct Site {
     pub blog_dir: PathBuf,
@@ -59,6 +71,8 @@ pub struct Site {
     /// Set when `[gallery] enabled = true`.
     pub gallery: Option<Gallery>,
     pub gallery_values: GalleryValues,
+    /// blog.toml `image`, else `static/og-default.png` if it exists.
+    pub image: Option<Image>,
 }
 
 /// Template values for the gallery, parallel to `Gallery::photos` / `albums` / `tag_index`.
@@ -80,6 +94,14 @@ pub fn permalink(pattern: &str, slug: &str, date: Option<&DateTime<FixedOffset>>
             .replace("{day}", &format!("{:02}", d.day()));
     }
     s
+}
+
+/// `image`, `image_width` and `image_height`, each none when unknown.
+fn insert_image(m: &mut BTreeMap<&str, Value>, image: &Option<Image>) {
+    let size = image.as_ref().and_then(|i| i.size);
+    m.insert("image", image.as_ref().map(|i| Value::from(i.url.clone())).unwrap_or(Value::from(())));
+    m.insert("image_width", size.map(|s| Value::from(s.0)).unwrap_or(Value::from(())));
+    m.insert("image_height", size.map(|s| Value::from(s.1)).unwrap_or(Value::from(())));
 }
 
 fn json_to_value(j: &Json) -> Value {
@@ -247,7 +269,48 @@ impl Site {
         .map(|s| s.to_string())
         .collect();
 
-        let site_value = Self::site_value(&cfg, &base_path);
+        // Every published file by URL, so share images can report their size.
+        let mut files_by_url: HashMap<String, PathBuf> = HashMap::new();
+        for (abs, out) in item_files.values().flatten().chain(loose_files.iter()) {
+            files_by_url.insert(prefix_base(&base_path, out), abs.clone());
+        }
+        for dir in [theme_dir.clone(), blog_dir.join("static")] {
+            for (abs, rel) in crate::render::walk_files(&dir)? {
+                if dir == theme_dir && (crate::render::is_private(&rel) || crate::render::is_template(&rel)) {
+                    continue;
+                }
+                files_by_url.insert(prefix_base(&base_path, &format!("/{rel}")), abs);
+            }
+        }
+        // A resolved image URL made absolute, with its size if it is one of the site's own files.
+        let share_image = |url: String| -> (Image, bool) {
+            let local = files_by_url.get(url.split(['?', '#']).next().unwrap_or(""));
+            let size = local.and_then(|p| image::image_dimensions(p).ok());
+            let is_external = crate::util::has_scheme(&url) || url.starts_with("//");
+            let abs = crate::templates::absolute(&cfg.base_url, &base_path, &url);
+            (Image { url: abs, size }, local.is_some() || is_external)
+        };
+        let site_image = match &cfg.image {
+            Some(v) => {
+                let v = v.trim();
+                let url = if v.starts_with('/') || crate::util::has_scheme(v) || v.starts_with("//") {
+                    prefix_base(&base_path, v)
+                } else {
+                    prefix_base(&base_path, &format!("/{v}"))
+                };
+                let (img, found) = share_image(url);
+                if !found {
+                    warnings.push(format!("blog.toml: image {v:?} is not a file in static/ or theme/"));
+                }
+                Some(img)
+            }
+            None if blog_dir.join("static").join(DEFAULT_IMAGE).is_file() => {
+                Some(share_image(prefix_base(&base_path, &format!("/{DEFAULT_IMAGE}"))).0)
+            }
+            None => None,
+        };
+
+        let site_value = Self::site_value(&cfg, &base_path, &site_image);
 
         // Pass 2: render bodies.
         let mut src_dirs: HashMap<String, String> = HashMap::new();
@@ -281,6 +344,16 @@ impl Site {
                     None if u.starts_with('/') && !u.starts_with("//") => prefix_base(&base_path, u),
                     None => u.to_string(),
                 }
+            };
+            let image = match p.src.front.get("image").and_then(|v| v.as_str()).map(str::trim).filter(|v| !v.is_empty()) {
+                Some(v) => {
+                    let (img, found) = share_image(resolver(v));
+                    if !found {
+                        warnings.push(format!("{}: image {v:?} is not a file in the blog", p.src.rel.display()));
+                    }
+                    Some(img)
+                }
+                None => None,
             };
             let (title, html, excerpt, plain, raw, headings, has_more) = match &p.src.body {
                 Body::Markdown(text) => {
@@ -324,6 +397,7 @@ impl Site {
                 has_more,
                 tags: content::tags_of(&p.src.front),
                 files: item_files.remove(&i).unwrap_or_default(),
+                image,
                 value: Value::UNDEFINED,
                 src: p.src,
             };
@@ -398,13 +472,15 @@ impl Site {
             opts,
             gallery,
             gallery_values: GalleryValues::default(),
+            image: site_image,
         };
         site.build_values()?;
         Ok(site)
     }
 
-    fn site_value(cfg: &Config, base_path: &str) -> Value {
+    fn site_value(cfg: &Config, base_path: &str, image: &Option<Image>) -> Value {
         let mut m = BTreeMap::new();
+        insert_image(&mut m, image);
         m.insert("title", Value::from(cfg.title.clone()));
         m.insert("description", Value::from(cfg.description.clone()));
         m.insert("author", Value::from(cfg.author.clone()));
@@ -503,6 +579,7 @@ impl Site {
             })
             .collect();
         m.insert("files", Value::from(files));
+        insert_image(&mut m, &it.image);
         Value::from_serialize(m)
     }
 
@@ -571,7 +648,7 @@ impl Site {
             })
             .collect();
 
-        let mut site = Self::site_value(&self.cfg, &self.base_path);
+        let mut site = Self::site_value(&self.cfg, &self.base_path, &self.image);
         // site.updated: newest post date (deterministic, unlike a build timestamp).
         let updated = self.posts.iter().filter_map(|p| p.date.as_ref().map(|d| d.0)).max();
         let mut sm: BTreeMap<String, Value> = BTreeMap::new();

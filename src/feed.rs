@@ -1,4 +1,5 @@
-//! Engine-owned outputs: the RSS feed and the sitemap. Themes cannot replace these.
+//! Engine-owned outputs: the RSS feed and the sitemap, which themes cannot replace, and a
+//! default robots.txt, which `static/robots.txt` or a theme's own `robots.txt` replaces.
 
 use crate::markdown::rewrite_attrs;
 use crate::site::Site;
@@ -12,6 +13,12 @@ static ROOT_RELATIVE: std::sync::LazyLock<regex::Regex> = std::sync::LazyLock::n
 
 pub const FEED_PATH: &str = "feed.xml";
 pub const SITEMAP_PATH: &str = "sitemap.xml";
+pub const ROBOTS_PATH: &str = "robots.txt";
+
+/// Allow everything and point crawlers at the sitemap.
+pub fn robots(site: &Site) -> String {
+    format!("User-agent: *\nAllow: /\n\nSitemap: {}/{SITEMAP_PATH}\n", site.cfg.base_url)
+}
 
 fn cdata(s: &str) -> String {
     format!("<![CDATA[{}]]>", s.replace("]]>", "]]]]><![CDATA[>"))

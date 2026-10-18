@@ -13,6 +13,8 @@ hidden base theme: if a file is not in `theme/`, it does not exist.
 1. The engine owns: content discovery, Markdown rendering, post/page URLs, gallery URLs and image resizing,
    `/feed.xml` (RSS, full content, absolute URLs) and `/sitemap.xml`.
    A theme cannot produce those two paths; link to them with `site.feed_url`.
+   The engine also writes a `/robots.txt` that allows everything and names the sitemap,
+   unless `static/robots.txt` or a theme file publishes that path instead.
 2. The engine never adds markup, classes, styles or scripts to theme output.
    (Only `folderblog preview` injects a live-reload `<script>`, and only while serving.)
 3. Two outputs on one path is a build error that names both producers.
@@ -40,6 +42,12 @@ hidden base theme: if a file is not in `theme/`, it does not exist.
 - Every URL the engine gives you (`item.url`, `files[].url`, `older/newer.url`, `pager.*`,
   `site.url`, `site.feed_url`) already includes the base path. Use `| url` only on paths
   you write yourself. Use `item.permalink` for `<link rel="canonical">` and OpenGraph.
+- Search and link previews are the theme's job: give every page a `<meta name="description">`,
+  `<link rel="canonical">`, `og:title`/`og:description`/`og:type`/`og:url`/`og:site_name`
+  and `twitter:card`, and use `item.image or site.image` (absolute URLs, with
+  `image_width`/`image_height` when known) for `og:image` and `twitter:image`. The default
+  theme's `_layouts/base.html` does all of this, and `_layouts/post.html` adds BlogPosting
+  JSON-LD built with `| tojson` (safe inside `<script>`).
 - Autoescaping is on for outputs ending in `.html`, `.htm`, `.xml`, `.svg`, `.rss`, `.atom`,
   and off for everything else (JSON, CSS, JS, text). In JSON use `| tojson`.
 - Undefined values are lenient: `{{ post.meta.cover.url }}` is empty if `cover` is missing,
@@ -212,6 +220,9 @@ Every template sees these globals:
 | `params` | object | The `[params]` table from blog.toml. |
 | `updated` | date or none | Date of the newest post. Deterministic, so output only changes when content does. |
 | `generator` | string | `folderblog <version>`. |
+| `image` | string or none | Absolute URL of the default share image: blog.toml `image`, else `static/og-default.png` if it exists. Use it for `og:image` when an item has no `image`. |
+| `image_width` | int or none | Width of `image` in pixels, when it is a JPEG, PNG, WebP or GIF file in the blog. |
+| `image_height` | int or none | Height of `image` in pixels, when known. |
 
 ### item (every post and page)
 
@@ -245,6 +256,9 @@ Every template sees these globals:
 | `older` | link or none | Posts only: the next older post as {title, url, slug, date}. |
 | `newer` | link or none | Posts only: the next newer post as {title, url, slug, date}. |
 | `files` | list of file | Files beside a bundle's `index.md`, as {name, url, ext, is_image}. Empty for single-file items. |
+| `image` | string or none | Front matter `image` (a path, resolved like `resolve_url`, or a URL) as an absolute URL, for `og:image`. Falls back to nothing; use `item.image or site.image`. |
+| `image_width` | int or none | Width of `image` in pixels, when it is a JPEG, PNG, WebP or GIF file in the blog. |
+| `image_height` | int or none | Height of `image` in pixels, when known. |
 
 ### tag
 
@@ -406,7 +420,7 @@ group with `posts | groupby("year")`.
 - `data/` — JSON/TOML/YAML exposed as `data`.
 - Front matter is optional (YAML between `---` or TOML between `+++`). Known keys:
   `title`, `date`, `tags`, `slug`, `layout`, `draft`, `excerpt`/`summary`, `updated`,
-  `url` (override the output URL), `weight` (page order). Everything else passes through
+  `url` (override the output URL), `weight` (page order), `image` (share image). Everything else passes through
   to `item.meta`, so a theme can invent its own keys (`cover`, `subtitle`, `color`…).
 
 ## blog.toml
@@ -436,6 +450,7 @@ group with `posts | groupby("year")`.
 | `deploy.author_name` | string | git: commit author name (default `folderblog`). |
 | `deploy.author_email` | string | git: commit author email. |
 | `deploy.command` | string | command: shell command; `$FOLDERBLOG_OUT` is the directory to publish. |
+| `image` | string | Default share image for link previews (`site.image`): a path under `static/` or `theme/` like `/img/share.png`, or a URL. Default `/og-default.png` when `static/og-default.png` exists. |
 | `deploy_branch` | string | Only deploy while the blog folder is a git checkout on this branch with no merge, rebase, cherry-pick or revert in progress; otherwise the deploy fails with `held: …` and is retried. |
 | `params` | table | Anything you like; exposed to templates as `site.params` and `params`. |
 

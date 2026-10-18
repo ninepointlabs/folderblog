@@ -220,6 +220,16 @@ impl Site {
             lastmod: None,
         });
 
+        if !outputs.iter().any(|o| o.path == feed::ROBOTS_PATH) {
+            outputs.push(Output {
+                path: feed::ROBOTS_PATH.into(),
+                url: prefix_base(&self.base_path, &format!("/{}", feed::ROBOTS_PATH)),
+                origin: "engine: robots.txt".into(),
+                content: Content::Bytes(feed::robots(self).into_bytes()),
+                lastmod: None,
+            });
+        }
+
         // Two outputs on one path is an error, naming both producers.
         let mut seen: BTreeMap<&str, &str> = BTreeMap::new();
         for o in &outputs {

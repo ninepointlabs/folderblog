@@ -49,6 +49,9 @@ pub fn check(blog: &Path, fixtures: Option<String>) -> Result<Report> {
         }
         Err(e) => rep.errors.push(format!("feed.xml was not written: {e}")),
     }
+    if site.cfg.description.trim().is_empty() {
+        rep.warnings.push("blog.toml: description is empty; search engines and link previews use it for pages without a summary".into());
+    }
     if site.cfg.base_url.contains("example.com") {
         rep.warnings.push(format!("blog.toml: base_url is still a placeholder ({})", site.cfg.base_url));
     }
