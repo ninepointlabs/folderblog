@@ -89,26 +89,28 @@ is the only dependency.
 
 **Arch Linux / Omarchy / Manjaro**
 ```sh
-curl -LO https://github.com/ninepointlabs/folderblog/releases/latest/download/folderblog-bin-0.2.2-1-x86_64.pkg.tar.zst
-sudo pacman -U folderblog-bin-0.2.2-1-x86_64.pkg.tar.zst
+curl -LO https://github.com/ninepointlabs/folderblog/releases/latest/download/folderblog-bin-0.2.3-1-x86_64.pkg.tar.zst
+sudo pacman -U folderblog-bin-0.2.3-1-x86_64.pkg.tar.zst
 ```
 
 **Debian / Ubuntu / Pop!_OS / Mint**
 ```sh
-curl -LO https://github.com/ninepointlabs/folderblog/releases/latest/download/folderblog_0.2.2-1_amd64.deb
-sudo apt install ./folderblog_0.2.2-1_amd64.deb
+curl -LO https://github.com/ninepointlabs/folderblog/releases/latest/download/folderblog_0.2.3-1_amd64.deb
+sudo apt install ./folderblog_0.2.3-1_amd64.deb
 ```
 
 **Fedora / RHEL / openSUSE**
 ```sh
-sudo dnf install https://github.com/ninepointlabs/folderblog/releases/latest/download/folderblog-0.2.2-1.x86_64.rpm
+sudo dnf install https://github.com/ninepointlabs/folderblog/releases/latest/download/folderblog-0.2.3-1.x86_64.rpm
 ```
 
 **Any other Linux (tarball)**
 ```sh
-curl -L https://github.com/ninepointlabs/folderblog/releases/latest/download/folderblog-0.2.2-x86_64-linux.tar.gz | tar xz
-sudo install -Dm755 folderblog-0.2.2-x86_64-linux/folderblog /usr/local/bin/folderblog
+curl -L https://github.com/ninepointlabs/folderblog/releases/latest/download/folderblog-0.2.3-x86_64-linux.tar.gz | tar xz
+sudo install -Dm755 folderblog-0.2.3-x86_64-linux/folderblog /usr/local/bin/folderblog
 ```
+
+**With [autonomix-cli](https://github.com/ninepointlabs/autonomix-cli)**: `autonomix-cli add https://github.com/ninepointlabs/folderblog`
 
 **From source** (Rust 1.89 or newer): `cargo install --git https://github.com/ninepointlabs/folderblog`
 
