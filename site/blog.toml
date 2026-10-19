@@ -14,3 +14,7 @@ limit = 20
 repo = "https://github.com/ninepointlabs/folderblog"
 version = "0.2.4"
 releases = "https://github.com/ninepointlabs/folderblog/releases/latest"
+
+# Self-hosted, cookie-free GoatCounter. Pages are counted as host/path.
+[analytics]
+goatcounter = "https://goatcounter-production-af4b.up.railway.app"
