@@ -187,6 +187,10 @@ details p { margin: 0 0 20px; color: #4a463e; }
 .foot .brand { color: #fff; }
 .foot a { color: #e8c07d; }
 .foot .dog { margin-top: 18px; font-size: 14px; color: #7d8187; }
+.foot .social { display: flex; flex-wrap: wrap; gap: 14px; margin: 14px 0; }
+.foot .social a { display: inline-flex; color: #a9aab0; }
+.foot .social a:hover, .foot .social a:focus-visible { color: #e8c07d; }
+.foot .social svg { width: 20px; height: 20px; fill: currentColor; }
 
 @media (max-width: 1000px) {
   .hero { grid-template-columns: 1fr; gap: 40px; }
