@@ -206,7 +206,7 @@ impl Site {
         });
         let mut entries: Vec<(String, Option<String>)> = outputs
             .iter()
-            .filter(|o| o.path.ends_with(".html") && o.path != "404.html" && !o.path.ends_with("/404.html"))
+            .filter(|o| o.path.ends_with(".html") && !is_not_found_page(&o.path))
             .filter(|o| !matches!(&o.content, Content::Render { ctx, .. } if is_draft(ctx)))
             .map(|o| (o.url.clone(), o.lastmod.clone()))
             .collect();
@@ -402,11 +402,16 @@ impl Site {
     /// The GoatCounter tags for rendered HTML, when `[analytics] goatcounter` is set and
     /// this is a publishable build (not a preview, draft or fixture build).
     pub fn analytics_snippet(&self) -> Option<String> {
+        self.analytics_snippet_for(false)
+    }
+
+    /// Like `analytics_snippet`, but for the 404 page when `not_found` is set.
+    pub fn analytics_snippet_for(&self, not_found: bool) -> Option<String> {
         let a = &self.cfg.analytics;
         if a.goatcounter.is_empty() || self.opts.drafts || self.opts.fixtures.is_some() {
             return None;
         }
-        Some(goatcounter_snippet(&a.goatcounter, a.host_prefix))
+        Some(goatcounter_snippet(&a.goatcounter, a.host_prefix, not_found))
     }
 
     /// Render the plan into `dir` (which must not exist). Fails if any output fails.
@@ -414,11 +419,13 @@ impl Site {
         let mut errors = plan.errors.clone();
         std::fs::create_dir_all(dir)?;
         let analytics = self.analytics_snippet();
+        let analytics_404 = self.analytics_snippet_for(true);
         let mut n = 0;
         for o in &plan.outputs {
             match self.render_output(o) {
                 Ok(mut bytes) => {
-                    if let (Some(snippet), Content::Render { .. }) = (&analytics, &o.content)
+                    let snippet = if is_not_found_page(&o.path) { &analytics_404 } else { &analytics };
+                    if let (Some(snippet), Content::Render { .. }) = (snippet, &o.content)
                         && (o.path.ends_with(".html") || o.path.ends_with(".htm"))
                     {
                         bytes = inject_head(bytes, snippet);
@@ -446,11 +453,25 @@ impl Site {
     }
 }
 
-/// GoatCounter's counting script, optionally counting each page as "host/path".
-pub fn goatcounter_snippet(base: &str, host_prefix: bool) -> String {
+/// GoatCounter's counting script, optionally counting each page as "host/path". On the 404
+/// page (`not_found`) the hit is counted as an event named "404 [host]/path" instead, so
+/// broken links show up separately from real page views.
+pub fn goatcounter_snippet(base: &str, host_prefix: bool, not_found: bool) -> String {
     let base = crate::util::html_escape(base);
-    let prefix = if host_prefix { "<script>window.goatcounter={path:function(p){return location.host+p}}</script>\n" } else { "" };
+    let host = if host_prefix { "location.host+" } else { "" };
+    let prefix = if not_found {
+        format!("<script>window.goatcounter={{path:function(p){{return '404 '+{host}p}},title:'404 Not Found',event:true}}</script>\n")
+    } else if host_prefix {
+        "<script>window.goatcounter={path:function(p){return location.host+p}}</script>\n".to_string()
+    } else {
+        String::new()
+    };
     format!("{prefix}<script data-goatcounter=\"{base}/count\" async src=\"{base}/count.js\"></script>\n")
+}
+
+/// The theme's "not found" page, which hosts serve for missing URLs.
+fn is_not_found_page(path: &str) -> bool {
+    path == "404.html" || path.ends_with("/404.html")
 }
 
 /// Insert `snippet` before the first `</head>`, unless the page has no head or already

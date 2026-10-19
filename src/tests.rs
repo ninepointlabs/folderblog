@@ -1098,11 +1098,19 @@ fn analytics_is_injected_into_every_rendered_page() {
     let want = format!(
         "<script>window.goatcounter={{path:function(p){{return location.host+p}}}}</script>\n<script data-goatcounter=\"{GC}/count\" async src=\"{GC}/count.js\"></script>\n</head>"
     );
-    for p in PAGE_TYPES {
+    for p in PAGE_TYPES.iter().filter(|p| **p != "404.html") {
         let html = b.read_out(p);
         assert!(html.contains(&want), "{p}: {html}");
         assert_eq!(html.matches("data-goatcounter").count(), 1, "{p}");
     }
+    // The 404 page counts an event named "404 host/path" instead of a page view.
+    let html = b.read_out("404.html");
+    let want_404 = format!(
+        "<script>window.goatcounter={{path:function(p){{return '404 '+location.host+p}},title:'404 Not Found',event:true}}</script>\n<script data-goatcounter=\"{GC}/count\" async src=\"{GC}/count.js\"></script>\n</head>"
+    );
+    assert!(html.contains(&want_404), "{html}");
+    assert_eq!(html.matches("data-goatcounter").count(), 1);
+    assert_eq!(html.matches("window.goatcounter").count(), 1);
     // Copied files and non-HTML templates are untouched.
     assert_eq!(b.read_out("plain.html"), "<html><head></head><body>static</body></html>");
     assert_eq!(b.read_out("style.css"), "body{}</head>");
@@ -1112,6 +1120,12 @@ fn analytics_is_injected_into_every_rendered_page() {
     b.build().unwrap();
     let html = b.read_out("index.html");
     assert!(!html.contains("window.goatcounter") && html.contains(&format!("<script data-goatcounter=\"{GC}/count\"")), "{html}");
+    let html = b.read_out("404.html");
+    assert!(
+        html.contains("<script>window.goatcounter={path:function(p){return '404 '+p},title:'404 Not Found',event:true}</script>\n")
+            && !html.contains("location.host"),
+        "{html}"
+    );
 }
 
 #[test]
@@ -1139,8 +1153,15 @@ fn analytics_not_doubled_and_escaped() {
     assert!(a.find("data-goatcounter").unwrap() < a.find("</HEAD>").unwrap(), "{a}");
     assert_eq!(a.matches("data-goatcounter").count(), 1);
     assert_eq!(b.read_out("404.html"), "<p>no head here</p>");
-    let s = crate::render::goatcounter_snippet("https://a.com/x&y", true);
-    assert!(s.contains("\"https://a.com/x&amp;y/count\""), "{s}");
+    // A theme 404 page that loads GoatCounter itself is respected as-is.
+    let own = "<html><head><script data-goatcounter=\"x\" async src=\"x.js\"></script></head></html>";
+    b.write("theme/404.html", own);
+    b.build().unwrap();
+    assert_eq!(b.read_out("404.html"), own);
+    for not_found in [false, true] {
+        let s = crate::render::goatcounter_snippet("https://a.com/x&y", true, not_found);
+        assert!(s.contains("\"https://a.com/x&amp;y/count\""), "{s}");
+    }
 }
 
 #[test]
@@ -1155,6 +1176,6 @@ fn analytics_never_in_preview_drafts_or_fixtures() {
         assert!(!html.contains("goatcounter"), "{p}");
     }
     let site = Site::load(&b.dir, LoadOptions { fixtures: Some("stress".into()), ..Default::default() }).unwrap();
-    assert!(site.analytics_snippet().is_none());
-    assert!(b.site().analytics_snippet().is_some());
+    assert!(site.analytics_snippet().is_none() && site.analytics_snippet_for(true).is_none());
+    assert!(b.site().analytics_snippet().is_some() && b.site().analytics_snippet_for(true).is_some());
 }

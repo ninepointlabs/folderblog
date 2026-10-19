@@ -672,6 +672,8 @@ counts a visit, whichever design you use. Things to know:
 
 - Each visit is counted as `yourblog.com/the-page`, so one GoatCounter can count several blogs
   and still tell them apart. To count just `/the-page`, add `host_prefix = false`.
+- Someone landing on a missing page isn't counted as a visit. It shows up in GoatCounter as an
+  event named `404 yourblog.com/the-missing-page`, so you can spot broken links.
 - `folderblog preview` never counts, so looking at your own blog doesn't add visits.
 - Files in the `static` folder are put online untouched, so they are not counted.
 - `folderblog check` tells you if the address is wrong.

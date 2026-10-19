@@ -84,7 +84,7 @@ Off by default. To count page views with [GoatCounter](https://www.goatcounter.c
 goatcounter = "https://stats.example.com"
 ```
 
-Published builds then add GoatCounter's script to every page, with any theme. Pages are counted as `host/path`, so one GoatCounter site can serve several blogs (`host_prefix = false` turns that off). `folderblog preview` never counts, and files in `static/` are copied untouched. Needs a folderblog newer than 0.2.2.
+Published builds then add GoatCounter's script to every page, with any theme. Pages are counted as `host/path`, so one GoatCounter site can serve several blogs (`host_prefix = false` turns that off). A visit to a missing page is counted as an event named `404 host/path` instead of a page view, so broken links stand out. `folderblog preview` never counts, and files in `static/` are copied untouched. Needs a folderblog newer than 0.2.2.
 
 ## 5. Make it yours
 
