@@ -485,7 +485,8 @@ goatcounter = "https://stats.example.com"   # base URL of your GoatCounter site 
 `build`, `deploy` and `watch` then add GoatCounter's two `<script>` tags just before `</head>`
 of every rendered HTML page (posts, pages, home, archives, tags, gallery, 404), whatever the
 theme. `host_prefix` lets one GoatCounter site count several blogs and tell them apart; set it
-to `false` for plain paths. `preview` and `build --drafts` / `--fixtures` never add it, files in
+to `false` for plain paths. On the 404 page the hit is counted as a GoatCounter *event* named
+`404 host/path` (or `404 /path`), so broken links show up apart from real page views. `preview` and `build --drafts` / `--fixtures` never add it, files in
 `static/` are copied untouched, and a page that already includes `data-goatcounter` is left
 alone. If your theme sets a Content-Security-Policy, allow the GoatCounter host for scripts
 and images.

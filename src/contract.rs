@@ -250,7 +250,7 @@ pub const CONFIG_KEYS: &[Field] = &[
     f("watch.ignore", "list of paths", "Paths (relative to the blog folder, prefix match) whose changes never trigger a rebuild."),
     f("gallery.enabled", "bool", "Publish the pictures in `gallery/` as a photo gallery (default false). `folderblog gallery on` sets it and adds `gallery/` and the templates."),
     f("gallery.url", "string", "Where the gallery lives (default `/gallery/`)."),
-    f("analytics.goatcounter", "string", "Optional, off by default: base URL of a GoatCounter site (`https://` only), e.g. `https://stats.example.com`. When set, `folderblog build`, `deploy` and `watch` add GoatCounter's cookie-free counting script before `</head>` of every rendered HTML page; previews, draft and fixture builds never do. Pages that already contain `data-goatcounter` are left alone."),
+    f("analytics.goatcounter", "string", "Optional, off by default: base URL of a GoatCounter site (`https://` only), e.g. `https://stats.example.com`. When set, `folderblog build`, `deploy` and `watch` add GoatCounter's cookie-free counting script before `</head>` of every rendered HTML page; previews, draft and fixture builds never do. The 404 page counts a GoatCounter event named `404 host/path` instead of a page view. Pages that already contain `data-goatcounter` are left alone."),
     f("analytics.host_prefix", "bool", "Count pages as `host/path` so one GoatCounter site can serve several blogs (default true)."),
     f("deploy.type", "string", "`github`, `git` or `command`."),
     f("deploy.owner", "string", "github: account or org that owns the repo (set by `folderblog new` when logged in)."),
