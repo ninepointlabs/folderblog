@@ -134,12 +134,48 @@ pub enum Cmd {
         /// The blog's folder (default: the folder you are in)
         blog: Option<PathBuf>,
     },
-    /// Turn the podcast on or off; on adds podcast/, the podcast templates and .gitignore lines for audio (no argument: show its state and any problems)
+    /// Turn the podcast on or off, or `setup` its audio hosting on Cloudflare R2 (no argument: show its state and any problems)
     Podcast {
-        /// `on` or `off` (leave out to see the podcast's state)
+        /// `on`, `off` or `setup` (leave out to see the podcast's state)
         state: Option<String>,
         /// The blog's folder (default: the folder you are in)
         blog: Option<PathBuf>,
+        /// setup: your Cloudflare Account ID
+        #[arg(long)]
+        account_id: Option<String>,
+        /// setup: the R2 bucket (default: <blog>-podcast)
+        #[arg(long)]
+        bucket: Option<String>,
+        /// setup: the bucket's public address, when you made the bucket yourself
+        #[arg(long)]
+        public_url: Option<String>,
+        /// setup: the bucket key's Access Key ID, when you made the key yourself
+        #[arg(long)]
+        access_key_id: Option<String>,
+        /// setup: read the key's Secret Access Key from stdin (secrets are never accepted as arguments)
+        #[arg(long)]
+        secret_from_stdin: bool,
+        /// setup: read a Cloudflare API token (Workers R2 Storage: Edit) from stdin; folderblog makes the bucket
+        #[arg(long)]
+        token_from_stdin: bool,
+        /// setup: connect this domain (already on Cloudflare) instead of an r2.dev address
+        #[arg(long)]
+        domain: Option<String>,
+        /// setup: the Zone ID of --domain
+        #[arg(long)]
+        zone_id: Option<String>,
+        /// setup: the bucket's jurisdiction, `eu` or `fedramp`
+        #[arg(long)]
+        jurisdiction: Option<String>,
+        /// setup: a Lightning address (name@domain) for listener tips
+        #[arg(long)]
+        lightning_address: Option<String>,
+        /// setup: show the current hosting settings (secrets are never shown)
+        #[arg(long)]
+        show: bool,
+        /// setup: print links instead of opening them in the browser
+        #[arg(long)]
+        no_browser: bool,
     },
     /// Regenerate the contract section of the blog's AGENTS.md (prints it without --write)
     AgentsMd {

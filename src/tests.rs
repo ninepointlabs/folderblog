@@ -544,6 +544,14 @@ fn every_documented_config_key_parses() {
     let value = |k: &crate::contract::Field| -> String {
         if k.name == "analytics.goatcounter" || k.name == "podcast.storage.public_url" {
             "'https://stats.example.com'".into()
+        } else if k.name == "podcast.storage.type" {
+            "'s3'".into()
+        } else if k.name == "podcast.storage.endpoint" {
+            "'https://s3.example.com'".into()
+        } else if k.name == "podcast.storage.jurisdiction" {
+            "'eu'".into()
+        } else if k.name == "podcast.storage.bucket" {
+            "'show-podcast'".into()
         } else if k.name == "podcast.type" {
             "'serial'".into()
         } else if k.name == "podcast.medium" {
@@ -1592,4 +1600,294 @@ fn several_media_files_need_audio_in_front_matter() {
     assert!(check_errors(&b).join("\n").contains("2 media files in podcast/2024-05-01-pilot/; set `audio: <file>`"));
     b.write("podcast/2024-05-01-pilot/index.md", &format!("---\nguid: \"{GUID1}\"\naudio: raw.mp3\n---\nx"));
     assert!(check_errors(&b).is_empty(), "{:?}", check_errors(&b));
+}
+
+// ---------- podcast storage ----------
+
+fn mock_creds() -> crate::storage::Credentials {
+    crate::storage::Credentials { access_key_id: "AKIDMOCK1234".into(), secret_access_key: "canary-secret-value".into() }
+}
+
+/// A podcast blog whose deploys upload to the local mock and publish with a command.
+fn storage_blog(mock: &crate::mock_s3::Mock) -> (Blog, tempfile::TempDir) {
+    let b = podcast_blog("");
+    let cfg = fs::read_to_string(b.dir.join("blog.toml")).unwrap();
+    let cfg = cfg.replace(
+        "[podcast.storage]\npublic_url = \"https://media.example.com/\"",
+        &format!("[podcast.storage]\ntype = \"s3\"\nendpoint = \"{}\"\nbucket = \"show\"\npublic_url = \"https://media.example.com\"", mock.url),
+    );
+    fs::write(b.dir.join("blog.toml"), format!("{cfg}\n[deploy]\ntype = \"command\"\ncommand = \"touch deployed-marker\"\n")).unwrap();
+    let conf = tempfile::tempdir().unwrap();
+    crate::storage::save_credentials(conf.path(), "show", &mock_creds()).unwrap();
+    (b, conf)
+}
+
+fn deploy(b: &Blog, conf: &Path) -> anyhow::Result<crate::deploy::Outcome> {
+    b.build()?;
+    crate::deploy::deploy_with(&b.dir, false, conf)
+}
+
+#[test]
+fn deploy_uploads_episodes_signed_once_then_skips_them() {
+    let mock = crate::mock_s3::Mock::start(mock_creds());
+    let (b, conf) = storage_blog(&mock);
+    add_episode(&b, "2024-05-01-pilot", &format!("guid: \"{GUID1}\""), "episode.mp3", MP3);
+    add_episode(&b, "2024-05-02-draft", "guid: d\ndraft: true", "episode.mp3", MP3_NO_XING);
+    match deploy(&b, conf.path()).unwrap() {
+        crate::deploy::Outcome::Deployed(d) => assert!(d.contains("uploaded 1 episode file"), "{d}"),
+        _ => panic!("not deployed"),
+    }
+    assert!(b.dir.join("deployed-marker").exists());
+    let reqs = mock.requests();
+    let put: Vec<_> = reqs.iter().filter(|r| r.method == "PUT").collect();
+    assert_eq!(put.len(), 1, "drafts are never uploaded: {reqs:#?}");
+    let r = put[0];
+    assert!(r.path.starts_with("/show/example.com/pilot-") && r.path.ends_with(".mp3"), "{}", r.path);
+    assert!(r.headers["authorization"].starts_with("AWS4-HMAC-SHA256 Credential=AKIDMOCK1234/"), "{:?}", r.headers);
+    assert!(r.headers.contains_key("x-amz-date"));
+    assert_eq!(r.headers["x-amz-content-sha256"], crate::storage::sha256_hex(MP3));
+    assert_eq!(r.headers["content-type"], "audio/mpeg");
+    assert_eq!(r.body_len, MP3.len());
+    assert!(mock.state.lock().unwrap().bad_signatures.is_empty());
+    assert!(reqs.iter().any(|r| r.method == "HEAD"), "the enclosure is checked after upload");
+    // An unchanged build is not redeployed; a changed one re-checks but doesn't re-upload.
+    b.write("posts/new.md", "# New\n");
+    deploy(&b, conf.path()).unwrap();
+    assert_eq!(mock.requests().iter().filter(|r| r.method == "PUT").count(), 1, "the manifest skips re-uploads");
+    // The secret never lands in the blog folder or its state.
+    for e in walkdir::WalkDir::new(&b.dir).into_iter().filter_map(|e| e.ok()).filter(|e| e.file_type().is_file()) {
+        let text = fs::read(e.path()).unwrap();
+        assert!(!String::from_utf8_lossy(&text).contains("canary-secret-value"), "{}", e.path().display());
+    }
+}
+
+#[test]
+fn a_failed_upload_holds_the_deploy() {
+    let mock = crate::mock_s3::Mock::start(mock_creds());
+    let (b, conf) = storage_blog(&mock);
+    add_episode(&b, "2024-05-01-pilot", &format!("guid: \"{GUID1}\""), "episode.mp3", MP3);
+    mock.state.lock().unwrap().fail_puts = Some(500);
+    let e = format!("{:#}", deploy(&b, conf.path()).err().expect("held"));
+    assert!(e.starts_with("held:") && e.contains("feed never points at missing audio"), "{e}");
+    assert!(!e.contains("canary-secret-value"));
+    assert!(!b.dir.join("deployed-marker").exists(), "the site was not published");
+    let st = crate::status::load(&b.dir);
+    assert!(st.deploy.as_ref().is_some_and(|d| !d.ok), "the hold is recorded so the watcher retries");
+    // Fixed: the next deploy goes out.
+    mock.state.lock().unwrap().fail_puts = None;
+    crate::deploy::deploy_with(&b.dir, false, conf.path()).unwrap();
+    assert!(b.dir.join("deployed-marker").exists());
+}
+
+#[test]
+fn a_wrong_size_on_the_host_holds_the_deploy_and_is_uploaded_again() {
+    let mock = crate::mock_s3::Mock::start(mock_creds());
+    let (b, conf) = storage_blog(&mock);
+    add_episode(&b, "2024-05-01-pilot", &format!("guid: \"{GUID1}\""), "episode.mp3", MP3);
+    mock.state.lock().unwrap().truncate = true;
+    let e = format!("{:#}", deploy(&b, conf.path()).err().expect("held"));
+    assert!(e.contains("on the media host is") && e.contains("uploaded again"), "{e}");
+    mock.state.lock().unwrap().truncate = false;
+    crate::deploy::deploy_with(&b.dir, false, conf.path()).unwrap();
+    assert_eq!(mock.requests().iter().filter(|r| r.method == "PUT").count(), 2);
+}
+
+#[test]
+fn missing_keys_hold_the_deploy_with_a_clear_message() {
+    let mock = crate::mock_s3::Mock::start(mock_creds());
+    let (b, _conf) = storage_blog(&mock);
+    add_episode(&b, "2024-05-01-pilot", &format!("guid: \"{GUID1}\""), "episode.mp3", MP3);
+    let empty = tempfile::tempdir().unwrap();
+    let e = format!("{:#}", deploy(&b, empty.path()).err().expect("held"));
+    assert!(e.contains("held: no saved key for the bucket \"show\"; run `folderblog podcast setup`"), "{e}");
+}
+
+#[test]
+fn large_files_go_up_in_signed_parts() {
+    let mock = crate::mock_s3::Mock::start(mock_creds());
+    let tmp = tempfile::tempdir().unwrap();
+    let f = tmp.path().join("big.mp3");
+    let data: Vec<u8> = (0..10_000u32).map(|i| (i % 251) as u8).collect();
+    fs::write(&f, &data).unwrap();
+    let mut store = crate::storage::S3Store::new(&mock.url, "show", "auto", mock_creds(), "https://media.example.com");
+    store.multipart_threshold = 4_000;
+    store.part_size = 3_000;
+    use crate::storage::MediaStore;
+    store.put("b/big.mp3", &f, "audio/mpeg").unwrap();
+    let reqs = mock.requests();
+    assert_eq!(reqs.iter().filter(|r| r.method == "PUT" && r.query.contains("partNumber")).count(), 4, "{reqs:#?}");
+    assert!(reqs.iter().any(|r| r.method == "POST" && r.query == "uploads"));
+    assert!(reqs.iter().any(|r| r.method == "POST" && r.query.contains("uploadId=upload-1")));
+    assert_eq!(mock.state.lock().unwrap().objects["show/b/big.mp3"], data);
+    assert_eq!(store.head("b/big.mp3").unwrap(), Some(10_000));
+    assert_eq!(store.head("nope.mp3").unwrap(), None);
+    store.delete("b/big.mp3").unwrap();
+    assert_eq!(store.head("b/big.mp3").unwrap(), None);
+    assert!(mock.state.lock().unwrap().bad_signatures.is_empty());
+    // A failed part aborts the upload.
+    mock.state.lock().unwrap().fail_puts = Some(503);
+    let e = store.put("b/big.mp3", &f, "audio/mpeg").unwrap_err().to_string();
+    assert!(e.contains("part 1 of 4") && e.contains("tried again"), "{e}");
+    assert!(mock.requests().iter().any(|r| r.method == "DELETE" && r.query.contains("uploadId")));
+    // Wrong keys are refused, and the error says what to do.
+    let bad = crate::storage::S3Store::new(&mock.url, "show", "auto", crate::storage::Credentials { access_key_id: "AKIDMOCK1234".into(), secret_access_key: "wrong".into() }, "");
+    mock.state.lock().unwrap().fail_puts = None;
+    let e = bad.put("x.mp3", &f, "audio/mpeg").unwrap_err().to_string();
+    assert!(e.contains("Access Key ID or Secret is wrong"), "{e}");
+}
+
+fn setup_io<'a>(
+    input: &'a mut dyn std::io::BufRead,
+    out: &'a mut Vec<u8>,
+    hidden: &'a mut dyn FnMut(&str) -> anyhow::Result<String>,
+    opened: &'a mut dyn FnMut(&str),
+    mock: &crate::mock_s3::Mock,
+    conf: &Path,
+    public_get: &'a dyn Fn(&str) -> anyhow::Result<(u16, String)>,
+) -> crate::setup::Io<'a> {
+    crate::setup::Io {
+        input,
+        out,
+        hidden,
+        open: opened,
+        cf_api: format!("{}/client/v4", mock.url),
+        config_dir: conf.to_path_buf(),
+        r2_endpoint: Some(mock.url.clone()),
+        public_wait: std::time::Duration::from_millis(10),
+        public_get,
+    }
+}
+
+#[test]
+fn setup_quick_path_makes_the_bucket_and_saves_keys_privately() {
+    let token = crate::mock_s3::TOKEN;
+    // R2's S3 keys for a token: its id and the SHA-256 of its value.
+    let creds = crate::storage::Credentials { access_key_id: crate::mock_s3::TOKEN_ID.into(), secret_access_key: crate::storage::sha256_hex(token.as_bytes()) };
+    let mock = crate::mock_s3::Mock::start(creds);
+    let (_t, dir) = new_default_blog();
+    enable_podcast(&dir);
+    let conf = tempfile::tempdir().unwrap();
+    let url = mock.url.clone();
+    let public_get = move |u: &str| -> anyhow::Result<(u16, String)> {
+        let path = u.strip_prefix(&format!("https://{}/", crate::mock_s3::R2_DEV)).expect("public URL is the r2.dev address");
+        let mut r = ureq::get(&format!("{url}/pub/{path}")).config().http_status_as_error(false).build().call()?;
+        Ok((r.status().as_u16(), r.body_mut().read_to_string()?))
+    };
+    let mut input = std::io::Cursor::new(format!("{token}\n").into_bytes());
+    let mut out = vec![];
+    let mut hidden = |_: &str| -> anyhow::Result<String> { panic!("scripted setup never prompts") };
+    let mut opened = |u: &str| panic!("opened {u}");
+    let opts = crate::setup::Opts {
+        account_id: Some("acct123".into()),
+        token_from_stdin: true,
+        lightning_address: Some("show@rizful.com".into()),
+        no_browser: true,
+        ..Default::default()
+    };
+    let mut io = setup_io(&mut input, &mut out, &mut hidden, &mut opened, &mock, conf.path(), &public_get);
+    let code = crate::setup::run(&dir, opts, &mut io).unwrap_or_else(|e| panic!("{e:#}\n{}", String::from_utf8_lossy(&out)));
+    assert_eq!(code, 0);
+    let text = String::from_utf8_lossy(&out).to_string();
+    for want in ["made the bucket example-org-podcast", "turned on pub-test.r2.dev", "ok    upload a tiny test file", "ok    download it from https://pub-test.r2.dev/", "ok    remove the test file", "A note on r2.dev"] {
+        assert!(text.contains(want), "missing {want:?}:\n{text}");
+    }
+    assert!(!text.contains(token) && !text.contains(&crate::storage::sha256_hex(token.as_bytes())), "no secret in the output");
+    let cfg = crate::config::Config::load(&dir).unwrap();
+    let st = cfg.podcast.storage.unwrap();
+    assert_eq!((st.kind.as_str(), st.account_id.as_str(), st.bucket.as_str(), st.public_url.as_str()), ("r2", "acct123", "example-org-podcast", "https://pub-test.r2.dev"));
+    assert_eq!(cfg.podcast.lightning_address, "show@rizful.com");
+    let toml = fs::read_to_string(dir.join("blog.toml")).unwrap();
+    assert!(!toml.contains(token) && !toml.contains("secret"), "{toml}");
+    let saved = crate::storage::load_credentials(conf.path(), "example-org-podcast").unwrap();
+    assert_eq!(saved.access_key_id, crate::mock_s3::TOKEN_ID);
+    assert!(mock.state.lock().unwrap().objects.is_empty(), "the check cleans up after itself");
+    // --show masks the key.
+    let mut out2 = vec![];
+    let mut input2 = std::io::Cursor::new(vec![]);
+    let mut io2 = setup_io(&mut input2, &mut out2, &mut hidden, &mut opened, &mock, conf.path(), &public_get);
+    crate::setup::run(&dir, crate::setup::Opts { show: true, ..Default::default() }, &mut io2).unwrap();
+    let shown = String::from_utf8_lossy(&out2).to_string();
+    assert!(shown.contains("access key id: …abcd") && shown.contains("secret: set") && !shown.contains(crate::mock_s3::TOKEN_ID), "{shown}");
+}
+
+#[test]
+fn setup_careful_path_checks_before_saving_anything() {
+    let mock = crate::mock_s3::Mock::start(mock_creds());
+    let (_t, dir) = new_default_blog();
+    enable_podcast(&dir);
+    let conf = tempfile::tempdir().unwrap();
+    let before = fs::read_to_string(dir.join("blog.toml")).unwrap();
+    // The bucket isn't public: the check fails and nothing is saved.
+    let not_public = |_: &str| -> anyhow::Result<(u16, String)> { Ok((404, String::new())) };
+    let mut input = std::io::Cursor::new(b"canary-secret-value\n".to_vec());
+    let mut out = vec![];
+    let mut hidden = |_: &str| -> anyhow::Result<String> { panic!("scripted") };
+    let mut opened = |u: &str| panic!("opened {u}");
+    let opts = crate::setup::Opts {
+        account_id: Some("acct123".into()),
+        bucket: Some("show".into()),
+        public_url: Some("https://media.example.org".into()),
+        access_key_id: Some("AKIDMOCK1234".into()),
+        secret_from_stdin: true,
+        no_browser: true,
+        ..Default::default()
+    };
+    let mut io = setup_io(&mut input, &mut out, &mut hidden, &mut opened, &mock, conf.path(), &not_public);
+    let e = format!("{:#}", crate::setup::run(&dir, opts.clone(), &mut io).unwrap_err());
+    let text = String::from_utf8_lossy(&out).to_string();
+    assert!(e.contains("nothing was saved"), "{e}");
+    assert!(text.contains("FAIL  download it from https://media.example.org/") && text.contains("Public Development URL"), "{text}");
+    assert_eq!(fs::read_to_string(dir.join("blog.toml")).unwrap(), before);
+    assert!(crate::storage::load_credentials(conf.path(), "show").is_err());
+    // Public now: saved, with the key file private and the secret only there.
+    let public = |u: &str| -> anyhow::Result<(u16, String)> {
+        let key = u.rsplit('/').next().unwrap();
+        let s = mock.state.lock().unwrap();
+        Ok(s.objects.get(&format!("show/{key}")).map(|v| (200, String::from_utf8_lossy(v).to_string())).unwrap_or((404, String::new())))
+    };
+    let mut input = std::io::Cursor::new(b"canary-secret-value\n".to_vec());
+    let mut out = vec![];
+    let mut io = setup_io(&mut input, &mut out, &mut hidden, &mut opened, &mock, conf.path(), &public);
+    crate::setup::run(&dir, opts, &mut io).unwrap();
+    assert!(!String::from_utf8_lossy(&out).contains("canary-secret-value"));
+    assert!(!fs::read_to_string(dir.join("blog.toml")).unwrap().contains("canary"));
+    assert_eq!(crate::storage::load_credentials(conf.path(), "show").unwrap().secret_access_key, "canary-secret-value");
+    let cfg = crate::config::Config::load(&dir).unwrap();
+    assert_eq!(cfg.podcast.storage.unwrap().public_url, "https://media.example.org");
+}
+
+#[test]
+fn setup_interactive_walks_a_new_user_through_signup() {
+    let token = crate::mock_s3::TOKEN;
+    let creds = crate::storage::Credentials { access_key_id: crate::mock_s3::TOKEN_ID.into(), secret_access_key: crate::storage::sha256_hex(token.as_bytes()) };
+    let mock = crate::mock_s3::Mock::start(creds);
+    let (_t, dir) = new_default_blog();
+    enable_podcast(&dir);
+    let conf = tempfile::tempdir().unwrap();
+    let state = mock.state.clone();
+    let public = move |u: &str| -> anyhow::Result<(u16, String)> {
+        let key = u.rsplit('/').next().unwrap();
+        let s = state.lock().unwrap();
+        Ok(s.objects.iter().find(|(k, _)| k.ends_with(key)).map(|(_, v)| (200, String::from_utf8_lossy(v).to_string())).unwrap_or((404, String::new())))
+    };
+    // No account yet; Enter after signup; Enter after R2; quick path; account id; default bucket;
+    // own domain with its zone; a Lightning address.
+    let answers = "n\n\n\n1\nacct123\n\ny\n\nzone42\nme@rizful.com\n";
+    let mut input = std::io::Cursor::new(answers.as_bytes().to_vec());
+    let mut out = vec![];
+    let mut hidden = |_: &str| -> anyhow::Result<String> { Ok(token.to_string()) };
+    let mut links = vec![];
+    let mut opened = |u: &str| links.push(u.to_string());
+    let mut io = setup_io(&mut input, &mut out, &mut hidden, &mut opened, &mock, conf.path(), &public);
+    crate::setup::run(&dir, crate::setup::Opts::default(), &mut io).unwrap_or_else(|e| panic!("{e:#}\n{}", String::from_utf8_lossy(&out)));
+    let text = String::from_utf8_lossy(&out).to_string();
+    assert!(text.contains("ask for a card or PayPal to turn R2 on, even on the free plan"), "{text}");
+    assert!(text.contains("connected media.example.org"), "{text}");
+    assert_eq!(links, [crate::setup::SIGNUP_URL, crate::setup::R2_OVERVIEW_URL, crate::setup::TOKEN_TEMPLATE_URL]);
+    let cfg = crate::config::Config::load(&dir).unwrap();
+    assert_eq!(cfg.podcast.storage.unwrap().public_url, "https://media.example.org");
+    assert!(!text.contains("A note on r2.dev"));
+    let custom = mock.requests().into_iter().find(|r| r.path.ends_with("/domains/custom")).expect("custom domain connected");
+    assert_eq!(custom.headers["cf-r2-jurisdiction"], "default");
+    assert_eq!(crate::config::Config::load(&dir).unwrap().podcast.lightning_address, "me@rizful.com");
 }

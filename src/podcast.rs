@@ -566,6 +566,7 @@ pub struct Recipient {
 }
 
 pub struct Media {
+    pub file: PathBuf,
     pub info: MediaInfo,
     /// Object key on the media host: `<blog>/<slug>-<sha8>.<ext>`.
     pub key: String,
@@ -833,7 +834,7 @@ pub fn load_show(a: ShowArgs, episodes: Vec<Item>, state: &mut crate::state::Sta
                         let enclosure = hosted.as_ref().map(|u| if pc.op3 { format!("https://op3.dev/e/{}", u.trim_start_matches("https://")) } else { u.clone() });
                         if hosted.is_none() && !a.preview {
                             hard = Some(format!(
-                                "{rel}: there is nowhere to host the audio yet, so this episode is left out; set [podcast.storage] public_url in blog.toml, or add `draft: true` until you are ready"
+                                "{rel}: there is nowhere to host the audio yet, so this episode is left out; run `folderblog podcast setup`, or add `draft: true` until you are ready"
                             ));
                         }
                         let url = if a.preview {
@@ -842,7 +843,7 @@ pub fn load_show(a: ShowArgs, episodes: Vec<Item>, state: &mut crate::state::Sta
                         } else {
                             hosted
                         };
-                        media = Some(Media { info, key, url, enclosure });
+                        media = Some(Media { file, info, key, url, enclosure });
                     }
                 }
             }
@@ -1328,6 +1329,19 @@ pub struct Snapshot {
     pub guid: String,
     /// Episode folder -> guid.
     pub episodes: BTreeMap<String, String>,
+    /// The episode files the feed points at, for uploading at deploy time.
+    #[serde(default)]
+    pub media: Vec<MediaEntry>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct MediaEntry {
+    pub folder: String,
+    pub file: PathBuf,
+    pub key: String,
+    pub bytes: u64,
+    pub sha256: String,
+    pub mime: String,
 }
 
 pub const BUILT_SNAPSHOT: &str = "podcast-built.json";
@@ -1337,6 +1351,22 @@ pub fn snapshot(show: &Show) -> Snapshot {
     Snapshot {
         guid: show.guid.clone(),
         episodes: show.episodes.iter().filter(|e| e.media.as_ref().is_some_and(|m| m.enclosure.is_some())).map(|e| (e.folder.clone(), e.guid.clone())).collect(),
+        media: show
+            .episodes
+            .iter()
+            .filter(|e| !e.item.src.draft)
+            .filter_map(|e| {
+                let m = e.media.as_ref().filter(|m| m.enclosure.is_some())?;
+                Some(MediaEntry {
+                    folder: e.folder.clone(),
+                    file: m.file.clone(),
+                    key: m.key.clone(),
+                    bytes: m.info.bytes,
+                    sha256: m.info.sha256.clone(),
+                    mime: m.info.kind.mime().to_string(),
+                })
+            })
+            .collect(),
     }
 }
 

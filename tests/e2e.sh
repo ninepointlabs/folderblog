@@ -13,7 +13,12 @@ T="$(mktemp -d)"
 # Never see the developer's own GitHub login: blogs here deploy to local bare repos.
 export XDG_CONFIG_HOME="$T/config"
 ROOT="$T/Blogs"
-trap 'kill $WATCH_PID 2>/dev/null || true; rm -rf "$T"' EXIT
+trap 'kill $WATCH_PID $S3_PID 2>/dev/null || true; rm -rf "$T"' EXIT
+# Podcast audio goes to a local stand-in for an S3 bucket (tests/mock_s3.py), never the network.
+python3 tests/mock_s3.py "$T/s3.port" & S3_PID=$!
+for _ in $(seq 1 50); do [ -s "$T/s3.port" ] && break; sleep 0.1; done
+S3="http://127.0.0.1:$(cat "$T/s3.port")"
+export FOLDERBLOG_STORAGE_KEY_ID=AKIDE2E FOLDERBLOG_STORAGE_SECRET=e2e-secret
 
 step() { printf '\n== %s\n' "$*"; }
 wait_for() { # wait_for <seconds> <description> <command...>
@@ -94,10 +99,10 @@ if git --git-dir="$T/beta.test.git" ls-tree -r --name-only gh-pages | grep -E '\
 
 step "turn on alpha's podcast and drop an episode folder into it"
 "$BIN" podcast on "$ROOT/alpha.test" > /dev/null
-python3 - "$ROOT/alpha.test/blog.toml" <<'EOF2'
+python3 - "$ROOT/alpha.test/blog.toml" "$S3" <<'EOF2'
 import sys; p=sys.argv[1]; s=open(p).read()
 s=s.replace("\n[podcast]\nenabled = true\n","\n[podcast]\nenabled = true\ncategory = \"Technology\"\nowner_email = \"show@alpha.test\"\n",1)
-s+="\n[podcast.storage]\npublic_url = \"https://media.alpha.test\"\n"
+s+="\n[podcast.storage]\ntype = \"s3\"\nendpoint = \"%s\"\nbucket = \"alpha\"\npublic_url = \"https://media.alpha.test\"\n" % sys.argv[2]
 open(p,"w").write(s)
 EOF2
 cp fixtures/stress/podcast/cover.jpg "$ROOT/alpha.test/podcast/cover.jpg"
@@ -111,7 +116,24 @@ show alpha.test podcast/feed.xml | grep -o '<enclosure url="https://media.alpha.
 show alpha.test podcast/pilot/index.html | grep -o '<audio[^>]*>'
 if git --git-dir="$T/alpha.test.git" ls-tree -r --name-only gh-pages | grep -E '\.(mp3|mp4|part)$'; then echo "FAIL: audio published with the site"; exit 1; fi
 echo "audio not in the deployed site"
+KEY=$(show alpha.test podcast/feed.xml | grep -o 'alpha.test/pilot-[0-9a-f]*\.mp3')
+curl -sf "$S3/alpha/$KEY" | cmp - "$EP/episode.mp3" && echo "episode uploaded to the bucket as $KEY"
 "$BIN" check "$ROOT/alpha.test" | tail -1
+
+step "a failed upload holds the deploy"
+curl -sf -X POST "$S3/__fail" >/dev/null
+A2=$(head_of alpha.test)
+EP2="$ROOT/alpha.test/podcast/2024-05-02-second"
+mkdir -p "$EP2"
+cp tests/media/cbr-no-xing.mp3 "$EP2/episode.mp3"
+printf -- '---\ntitle: Second\nguid: "e2e-second-guid"\n---\nMore.\n' > "$EP2/index.md"
+wait_for 30 "status to show the hold" bash -c "'$BIN' status --root '$ROOT' | grep -q 'held:'"
+{ "$BIN" status --root "$ROOT" || true; } | grep -o 'held: [^;]*' | head -1
+[ "$(head_of alpha.test)" = "$A2" ] && echo "alpha deployed output unchanged while held"
+curl -sf -X POST "$S3/__ok" >/dev/null
+touch "$EP2/index.md"
+wait_for 30 "second episode to deploy" bash -c "git --git-dir='$T/alpha.test.git' show gh-pages:podcast/feed.xml | grep -q 'e2e-second-guid'"
+echo "uploaded and deployed once the bucket worked again"
 
 step "preview live reload"
 "$BIN" preview "$ROOT/beta.test" --port 4199 > "$T/preview.log" 2>&1 &

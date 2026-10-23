@@ -429,6 +429,18 @@ podcast/
   `[podcast.storage] public_url` as `<public_url>/<blog>/<slug>-<hash>.mp3`, so an edited
   file gets a new URL. Until that is set, episodes are left out of the build. `folderblog
   preview` plays the local file.
+- `folderblog podcast setup` connects Cloudflare R2 step by step, even for someone with no
+  Cloudflare account yet: sign-up, turning on R2 (free up to 10 GB a month, but Cloudflare
+  asks for a card), then either one pasted API token (folderblog makes the bucket and its
+  r2.dev address or connects your domain) or a bucket and key you made yourself. It checks
+  the bucket with a test upload, a HEAD, a public download and a delete before saving
+  anything. The key goes to `~/.config/folderblog/storage/<bucket>.json` (mode 0600), never
+  into blog.toml or the blog folder. A custom domain is recommended; r2.dev is rate-limited
+  and Cloudflare says it isn't for production, but it's fine to start with.
+- Deploys upload new episode files first (in parts above 100 MB; a manifest in `.blog/`
+  skips files already uploaded), then HEAD each one and compare its size. If anything
+  fails, the whole deploy is held and retried, so the feed never points at missing audio.
+  Drafts are never uploaded.
 - Episodes stay on `/podcast/` by default; `in_main_feed = true` (or `in_main_feed: true`
   on one episode) also lists them with the posts and in `/feed.xml`.
 - `folderblog check` is strict about podcasts: required tags, https everywhere, known
@@ -514,6 +526,9 @@ owner_email = "you@example.com"                  # public in the feed
 # in_main_feed = false                           # also list episodes with posts
 
 [podcast.storage]
+type = "r2"                                      # set by `folderblog podcast setup`
+account_id = "..."
+bucket = "myblog-podcast"
 public_url = "https://media.example.com"         # where episode files are hosted
 
 # Optional, off by default. See "Analytics" below.
@@ -593,7 +608,7 @@ branch. Uncommitted edits on the branch still publish.
 | `folderblog check [BLOG] [--fixtures SET]` | Find template errors, feed problems, broken links |
 | `folderblog data [URL]` | Template context for a page (or list all pages) |
 | `folderblog gallery [on\|off] [BLOG]` | Turn the photo gallery on or off (adds `gallery/` and its templates) |
-| `folderblog podcast [on\|off] [BLOG]` | Turn the podcast on or off, or list episodes and problems |
+| `folderblog podcast [on\|off\|setup] [BLOG]` | Turn the podcast on or off, set up audio hosting on Cloudflare R2, or list episodes and problems |
 | `folderblog agents-md [BLOG] [--write]` | Refresh the blog's AGENTS.md |
 | `folderblog guide` | The step-by-step guide to everything ([docs/GUIDE.md](docs/GUIDE.md)) |
 | `folderblog man` | The same guide as a manual page (`man folderblog` once installed) |
