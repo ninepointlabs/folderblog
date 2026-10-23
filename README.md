@@ -51,8 +51,15 @@ without touching the engine.
   small `.md` beside a photo adds a title, caption and tags.
 - An optional podcast: one folder per episode in `podcast/` (show notes plus an MP3 or
   MP4), a show page, episode pages with a player, and a feed with iTunes and
-  Podcasting 2.0 tags. Audio is never put in the site or in git.
-- Deleting a file unpublishes it. Your files are only ever read, never modified.
+  Podcasting 2.0 tags. Audio is never put in the site or in git: it goes to Cloudflare R2,
+  which `folderblog podcast setup` connects step by step.
+- An MCP server (`folderblog mcp`) so an agent can turn an audio file into a draft
+  episode, write its notes and chapters, check it, and publish it once you say yes.
+- A `templates/` folder in every blog: a sample post and a sample podcast episode with
+  every front matter field explained, to copy when you want to fill things in by hand.
+- Deleting a file unpublishes it. folderblog never edits your posts or pages.
+- Updating keeps your blogs current: after an update the service adds what the new version
+  brings (like `templates/`) and refreshes `AGENTS.md`, without touching anything of yours.
 
 **Publishing**
 - Saves are debounced, and editor temp and swap files are ignored.
@@ -121,6 +128,10 @@ sudo install -Dm755 folderblog-0.2.7-x86_64-linux/folderblog /usr/local/bin/fold
 **From source** (Rust 1.89 or newer): `cargo install --git https://github.com/ninepointlabs/folderblog`
 
 Check it worked: `folderblog --version`.
+
+**Updating:** install the new package (or binary) the same way, then restart the service:
+`systemctl --user restart folderblog`. On its first start with the new version it brings
+every blog up to date (see [Running in the background](#running-in-the-background)).
 
 Desktop notifications use `notify-send` (package `libnotify` or `libnotify-bin`), which
 most desktops already have.
@@ -331,13 +342,24 @@ Every few years I try to go fully digital…
 ---
 title: A walk on the Ridgeway
 date: 2026-03-21
+updated: 2026-04-01    # also `modified` or `lastmod`
 tags: [walking, photos]
+summary: Chalk, larks and a long way round.   # or `excerpt`: your own preview text
+slug: ridgeway         # the last part of the address
+url: /walks/ridgeway/  # or the whole address
 layout: photo          # use theme/_layouts/photo.html for this post
 draft: true            # keep it out of the live site
 image: track.jpg       # share image for link previews (a path beside the post, or a URL)
+weight: 10             # pages only: smaller comes first in the menu
 anything: you like     # passed through to templates as post.meta.anything
 ---
 ```
+
+**Templates to copy:** `templates/post.md` in every blog has all of these with a note on
+each, and starts as a draft. Copy it into `posts/`, fill it in, delete the lines you don't
+need and the `draft: true` line. `templates/podcast-episode/` is the same for an episode.
+Blogs made before 0.2.6 get the folder when the service restarts on 0.2.7 or later, or
+straight away with `folderblog templates`. The folder is never published.
 
 **Images:** put a post in its own folder (`posts/ridgeway/index.md`) with its images beside
 it and write `![Chalk track](track.jpg)`. Loose files in `posts/` or `static/` work too.
@@ -454,6 +476,21 @@ podcast/
   length and duration, real MP3/MP4 data, art size, Apple categories, valid chapters and
   transcripts, and episode guids that are unique and unchanged since the last deploy.
 - `folderblog podcast` lists the episodes, the feed URL and any problems.
+
+**Publishing an episode by hand:**
+
+1. Copy `templates/podcast-episode/` to `podcast/2026-10-30-first-episode/` (the date
+   prefix is the episode date) and put the MP3 or MP4 beside `index.md`.
+2. Fill in `index.md`: the title, summary, season and episode number, people, show notes.
+   Every field is listed in the template with a note.
+3. Run `folderblog check`. It gives you a `guid` line to paste in (write it once, never
+   change it) and names anything else that needs fixing. `folderblog preview` plays the
+   episode locally.
+4. Remove `draft: true`, or run `folderblog podcast publish --episode first-episode`.
+   folderblog uploads the audio, checks it is online, then publishes the site and feed.
+
+To get the show into Apple Podcasts, Spotify and the others, submit the feed URL that
+`folderblog podcast` prints (`https://<your site>/podcast/feed.xml`) once.
 
 `folderblog podcast off` turns it off again and leaves your episodes where they are.
 
@@ -695,10 +732,23 @@ to your session startup.
 **A template error.** `folderblog check` names the file and line. The live site keeps its
 last good version until it's fixed.
 
+**An episode doesn't show up.** Run `folderblog podcast`. Episodes stay out of the build
+while they are drafts, while audio hosting isn't set up (`folderblog podcast setup`), or
+while they have a problem, which it lists. A failed audio upload holds the whole publish
+and is retried every 5 minutes.
+
+**My blog has no `templates/` folder after updating.** The service adds it when it
+restarts on the new version: `systemctl --user restart folderblog`. Or run
+`folderblog templates ~/Blogs/myblog`.
+
 ## How it stays safe
 
-- It only ever **reads** your writing, never modifies it, so editors with the file open
-  never complain.
+- It never modifies your posts or pages, so editors with the file open never complain.
+  On its own it writes only its own files: `.blog/`, the generated part of `AGENTS.md`
+  and missing samples in `templates/`. Commands you run on purpose (`gallery on`,
+  `podcast on`, `podcast setup`) also change `blog.toml` and add their folders and theme
+  templates, never overwriting yours. Episode files change only through `folderblog
+  podcast publish` and the MCP tools, which write nothing outside `podcast/`.
 - Each build goes into a fresh folder and swaps in only if every page rendered. A
   failed build leaves the live site exactly as it was.
 - Editors that save by writing a temp file and renaming it are handled. Swap files,
@@ -707,6 +757,11 @@ last good version until it's fixed.
 - The GitHub login is stored only on your machine (`~/.config/folderblog/github.json`,
   mode 600). It is sent to GitHub per request and never written into git config.
 - Build hooks can only come from your `blog.toml`, never from a theme.
+- Storage keys for podcast audio live in `~/.config/folderblog/storage/` (mode 600). They
+  are never written into the blog, `blog.toml`, logs or MCP replies, and never passed as
+  command-line arguments.
+- The service and a podcast publish (from the CLI or an agent) take turns through a lock,
+  so two builds or deploys of the same blog never run at once.
 
 ## Building from source
 
