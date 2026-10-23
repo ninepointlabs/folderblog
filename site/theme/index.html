@@ -165,6 +165,8 @@ no broken internal links</span>
 <span class="p">❯</span> folderblog install-service
 <span class="p">❯</span> folderblog new myblog
 <span class="p">❯</span> echo "# Hello" &gt; ~/Blogs/myblog/posts/hello.md</pre>
+    <p>Updating later: install the new package the same way, then</p>
+<pre><span class="p">❯</span> systemctl --user restart folderblog   <span class="d"># your blogs pick up what's new</span></pre>
   </div>
 </section>
 
@@ -172,11 +174,13 @@ no broken internal links</span>
   <div class="wrap-narrow">
     <p class="kicker">Questions</p>
     <h2>Good questions</h2>
-    <details><summary>Does folderblog ever change my files?</summary><p>No. It only reads your posts and pages, so an editor with the file open never complains. Its own state (first-seen dates, the last good build) lives in a hidden <code>.blog/</code> folder.</p></details>
+    <details><summary>Does folderblog ever change my files?</summary><p>Never your posts or pages, so an editor with the file open never complains. Its own state (first-seen dates, the last good build) lives in a hidden <code>.blog/</code> folder. The only other files it writes by itself are ones it owns: the generated part of <code>AGENTS.md</code>, and sample files in <code>templates/</code> that it adds once and never puts back if you delete them.</p></details>
+    <details><summary>Can I run a podcast with it?</summary><p>Yes. <code>folderblog podcast on</code>, then one folder per episode in <code>podcast/</code> with its MP3 (or MP4 for video) and show notes. folderblog makes the show and episode pages and a feed for Apple Podcasts, Spotify and the rest. The audio goes to Cloudflare R2, which <code>folderblog podcast setup</code> connects step by step, and the site waits until the upload has worked, so the feed never points at a missing file. An agent can do it all for you through <code>folderblog mcp</code>, and publishes only after you say yes.</p></details>
+    <details><summary>Which details can I put at the top of a post?</summary><p>None are needed. To fill some in by hand, copy <code>templates/post.md</code> (or <code>templates/podcast-episode/</code> for an episode) from your blog folder: it has every field folderblog knows, each with a short note.</p></details>
     <details><summary>What happens if I break something?</summary><p>The build fails in its fresh folder, the live site stays exactly as it was, and you get a desktop notification with the file and line. <code>folderblog status</code> shows it too. Fix it and the next save publishes.</p></details>
     <details><summary>Do I have to use GitHub?</summary><p>No. Any git remote works, and so does any command: rsync, rclone, Cloudflare's wrangler, the Netlify CLI. folderblog runs it with the finished site folder.</p></details>
     <details><summary>Can I use my own domain?</summary><p>Yes. <code>folderblog new example.com --domain example.com</code> sets it up on GitHub Pages and prints the DNS records to add at your registrar.</p></details>
-    <details><summary>Comments, analytics, search?</summary><p>Not built in, on purpose. The theme owns every byte, so a theme can add any of them. The magazine theme above generates its own search index.</p></details>
+    <details><summary>Comments, analytics, search?</summary><p>Visitor counts are built in but off by default: two lines in <code>blog.toml</code> turn on cookie-free <a href="https://www.goatcounter.com">GoatCounter</a>. Comments and search aren't, on purpose. The theme owns every byte, so a theme can add them. The magazine theme above generates its own search index.</p></details>
     <details><summary>macOS or Windows?</summary><p>Linux for now: packages for Arch, Debian/Ubuntu and Fedora, plus a static x86_64 binary. It's written in Rust, so other platforms are possible.</p></details>
   </div>
 </section>

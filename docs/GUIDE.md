@@ -1242,12 +1242,16 @@ Your website keeps its last good version until you fix it.
 
 ## How folderblog keeps you safe
 
-- It only **reads** your writing. It never changes your files.
+- It only **reads** your writing. It never changes your posts or pages. On its own it
+  only writes its own files (`.blog/`, `AGENTS.md`, and sample files in `templates/`).
+  Episodes change only when you publish one, or when an AI helper you connected does.
 - Each build happens in a fresh place. A broken build never touches your live website.
 - It ignores the temporary files that editors and sync programs leave around.
 - Each blog builds on its own, so one broken blog never stops the others.
 - Your GitHub login stays on your computer. Only you can read it.
 - Your original photos never go online, so their hidden location data stays private.
+- Your Cloudflare key stays on your computer too, outside the blog folder. It never shows
+  up in `blog.toml`, in messages or in what an AI helper sees.
 - Designs can't run programs on your computer. Only your own `blog.toml` can.
 
 ## Getting more help

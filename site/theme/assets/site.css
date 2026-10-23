@@ -146,6 +146,7 @@ section { padding: 100px 0; }
 .then { margin-top: 26px; }
 .then p { margin: 0 0 8px; font-weight: 700; }
 .then pre { margin: 0; padding: 20px 24px; background: var(--card); border-radius: 14px; box-shadow: 0 10px 30px rgba(40, 30, 15, .08); font: 15px/1.8 var(--mono); overflow-x: auto; }
+.then pre + p { margin-top: 22px; }
 .then .p { color: var(--rust); } .then .d { color: var(--faint); }
 
 /* faq */

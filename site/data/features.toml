@@ -41,4 +41,19 @@ text = "Jinja templates that own every byte: any layout, JSON search indexes, te
 [[f]]
 icon = "🤖"
 title = "Made for coding agents"
-text = "Every blog ships an AGENTS.md contract, plus preview, check, data and stress fixtures, so an agent can design and verify on its own."
+text = "Every blog ships an AGENTS.md contract, plus preview, check, data and stress fixtures, so an agent can design and verify on its own. `folderblog mcp` lets one put up podcast episodes too, publishing only after you say yes."
+
+[[f]]
+icon = "🎙️"
+title = "A podcast, if you want one"
+text = "`folderblog podcast on`, then one folder per episode with its MP3 or MP4. Show and episode pages with a player, and a feed ready for Apple Podcasts and Podcasting 2.0. The audio lives on Cloudflare R2, set up step by step with `folderblog podcast setup`."
+
+[[f]]
+icon = "📋"
+title = "Templates to fill in"
+text = "Every blog has a `templates/` folder: a sample post and a sample episode with every field explained. Copy one, fill it in, delete what you don't need."
+
+[[f]]
+icon = "🔄"
+title = "Updates bring the new parts"
+text = "Install a new version and restart the service. Each blog gets what the new version adds, like the templates, and nothing of yours is changed."
