@@ -1,0 +1,8 @@
+{
+  "version": "1.2.0",
+  "chapters": [
+    { "startTime": 0, "title": "Intro" },
+    { "startTime": 1, "title": "The idea", "url": "https://example.com/idea" },
+    { "startTime": 2, "title": "What comes next" }
+  ]
+}

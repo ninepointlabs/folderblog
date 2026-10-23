@@ -1,0 +1,15 @@
+.podcast-head { display: flex; gap: 1.5rem; align-items: flex-start; margin-bottom: 2.5rem; }
+.podcast-art { flex: 0 0 auto; width: 160px; height: 160px; border-radius: 6px; object-fit: cover; }
+.podcast-intro { color: var(--muted); }
+.podcast-subscribe { font-size: .92rem; }
+.episode-list { list-style: none; padding: 0; }
+.episode-summary { margin-bottom: 2.2rem; }
+.episode-summary h2 { margin: 0 0 .2rem; font-size: 1.35rem; }
+.episode-summary h2 a { color: var(--text); text-decoration: none; }
+.episode-summary h2 a:hover { color: var(--accent); }
+.episode-player { display: block; width: 100%; margin: 0 0 .5rem; }
+video.episode-player { height: auto; border-radius: 4px; }
+.episode-chapters ol { padding-left: 0; list-style: none; }
+.episode-chapters li { padding: .2rem 0; }
+.chapter-seek { font: inherit; font-variant-numeric: tabular-nums; color: var(--accent); background: none; border: 0; padding: 0 .5rem 0 0; cursor: pointer; }
+@media (max-width: 34rem) { .podcast-head { flex-direction: column; } }

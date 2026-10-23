@@ -38,8 +38,9 @@ pub fn absolutize(site: &Site, html: &str) -> String {
 pub fn rss(site: &Site) -> String {
     let cfg = &site.cfg;
     let base = format!("{}/", cfg.base_url);
-    let posts: Vec<_> = site.posts.iter().filter(|p| !p.src.draft).take(cfg.feed.limit).collect();
-    let updated = posts.iter().filter_map(|p| p.date.as_ref().map(|d| d.0)).max();
+    let listed = site.listed();
+    let posts: Vec<_> = listed.iter().filter(|(p, _)| !p.src.draft).take(cfg.feed.limit).collect();
+    let updated = posts.iter().filter_map(|(p, _)| p.date.as_ref().map(|d| d.0)).max();
     let desc = if cfg.description.is_empty() { &cfg.title } else { &cfg.description };
     let mut x = String::new();
     x.push_str("<?xml version=\"1.0\" encoding=\"utf-8\"?>\n");
@@ -56,7 +57,7 @@ pub fn rss(site: &Site) -> String {
     if let Some(u) = updated {
         x.push_str(&format!("<lastBuildDate>{}</lastBuildDate>\n", u.to_rfc2822()));
     }
-    for p in posts {
+    for (p, episode) in posts {
         let url = absolute(&cfg.base_url, &site.base_path, &crate::templates::prefix_base(&site.base_path, &p.route));
         x.push_str("<item>\n");
         x.push_str(&format!("<title>{}</title>\n", html_escape(&p.title)));
@@ -73,6 +74,12 @@ pub fn rss(site: &Site) -> String {
         }
         x.push_str(&format!("<description>{}</description>\n", cdata(&absolutize(site, &p.excerpt_html))));
         x.push_str(&format!("<content:encoded>{}</content:encoded>\n", cdata(&absolutize(site, &p.html))));
+        // Episodes listed in the main feed carry their audio too.
+        if let Some(m) = episode.and_then(|i| site.podcast.as_ref()?.episodes[i].media.as_ref()) {
+            if let Some(u) = &m.enclosure {
+                x.push_str(&format!("<enclosure url=\"{}\" length=\"{}\" type=\"{}\"/>\n", html_escape(u), m.info.bytes, m.info.kind.mime()));
+            }
+        }
         x.push_str("</item>\n");
     }
     x.push_str("</channel>\n</rss>\n");

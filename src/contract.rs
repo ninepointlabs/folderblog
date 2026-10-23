@@ -14,7 +14,7 @@ const fn f(name: &'static str, ty: &'static str, doc: &'static str) -> Field {
 pub const GLOBALS: &[Field] = &[
     f("site", "object", "Site settings from blog.toml; see **site** below."),
     f("params", "object", "The free-form `[params]` table from blog.toml (same as `site.params`)."),
-    f("posts", "list of item", "All published posts, newest first. In `preview` this also includes drafts (with `draft = true`)."),
+    f("posts", "list of item", "All published posts, newest first. In `preview` this also includes drafts (with `draft = true`). Podcast episodes listed in the main feed (`in_main_feed`) are included too, with `kind = \"episode\"`."),
     f("pages", "list of item", "All pages, sorted by front matter `weight` (default 0) then title."),
     f("tags", "list of tag", "Every tag used by a post, sorted by name."),
     f("years", "list of year", "Posts grouped by year, newest year first."),
@@ -30,6 +30,8 @@ pub const GLOBALS: &[Field] = &[
     f("gallery", "gallery", "The photo gallery; see **gallery** below. Always defined, so navigation can use `{% if gallery.enabled %}`."),
     f("photo", "photo", "Set when rendering `theme/_gallery/photo.html` (same value as `item`)."),
     f("album", "album", "Set when rendering `theme/_gallery/album.html` (same value as `item`)."),
+    f("podcast", "podcast", "The podcast; see **podcast** below. Always defined, so navigation can use `{% if podcast.enabled %}`."),
+    f("episode", "episode", "Set when rendering `theme/_podcast/episode.html` (same value as `item`)."),
 ];
 
 pub const SITE_FIELDS: &[Field] = &[
@@ -180,6 +182,45 @@ pub const GALLERY_TAG_FIELDS: &[Field] = &[
     f("photos", "list of photo", "Photos with this tag, newest first."),
 ];
 
+pub const PODCAST_FIELDS: &[Field] = &[
+    f("enabled", "bool", "`[podcast] enabled` from blog.toml. When false `episodes` is empty and no podcast pages or feed are made."),
+    f("title", "string", "`[podcast] title`, else the title of `podcast/index.md`, else the site title."),
+    f("description", "string", "`[podcast] description`, else the text of `podcast/index.md`, else the site description."),
+    f("url", "string", "URL of the show page, from `[podcast] url` (default `/podcast/`)."),
+    f("permalink", "string", "Absolute URL of the show page."),
+    f("feed_url", "string", "URL of the podcast feed (`<podcast.url>feed.xml`). Link to it for people to follow the show."),
+    f("feed_url_absolute", "string", "Absolute URL of the podcast feed (what podcast apps need)."),
+    f("intro", "html", "Body of `podcast/index.md`, rendered (empty if there is none)."),
+    f("meta", "object", "Front matter of `podcast/index.md`."),
+    f("image", "string or none", "Absolute URL of the show art."),
+    f("art_url", "string or none", "The show art as a link on this site (works in preview); use it for `<img>`."),
+    f("author", "string", "`[podcast] author`, else the site author."),
+    f("explicit", "bool", "`[podcast] explicit`."),
+    f("category", "string", "`[podcast] category` (an Apple Podcasts category)."),
+    f("subcategory", "string", "`[podcast] subcategory` (may be empty)."),
+    f("medium", "string", "`podcast` or `video`."),
+    f("lightning_address", "string or none", "`[podcast] lightning_address`, for a tips link."),
+    f("funding", "list of {url, text}", "`[podcast] funding` links."),
+    f("count", "int", "Number of episodes."),
+    f("episodes", "list of episode", "Every episode, newest first. In preview this includes drafts."),
+];
+
+pub const EPISODE_FIELDS: &[Field] = &[
+    f("(item fields)", "", "Every field of **item** above (`title`, `url`, `date`, `content`, `summary`, `tags`, `files`, `older`, `newer`…), with `kind = \"episode\"`. `older`/`newer` are the neighbouring episodes."),
+    f("guid", "string", "Front matter `guid`: the episode's permanent identity in podcast apps."),
+    f("season", "int or none", "Front matter `season`."),
+    f("number", "int or none", "Front matter `episode`, the episode number."),
+    f("episode_type", "string", "`full`, `trailer` or `bonus` (front matter `episode_type`, default `full`)."),
+    f("explicit", "bool", "Front matter `explicit`, else the show's."),
+    f("in_main_feed", "bool", "Whether the episode is also listed in `posts`, `tags`, `years` and `/feed.xml`."),
+    f("audio", "audio or none", "The episode file: `{url, enclosure, type, ext, is_video, bytes, duration, duration_hms}`. `url` is what to play (the local file in preview, the hosted file otherwise; none until hosting is set up), `enclosure` the feed URL, `duration` whole seconds."),
+    f("transcript", "{url, type} or none", "The `.vtt` or `.srt` transcript published beside the episode; `type` is `text/vtt` or `application/x-subrip`."),
+    f("chapters", "list of chapter", "Chapters from `chapters.json` that belong in a table of contents, as `{start, start_hms, title, url, img}` (`start` in seconds)."),
+    f("chapters_url", "string or none", "URL of the published `chapters.json`."),
+    f("persons", "list of {name, role, group, href, img}", "Front matter `persons` (hosts, guests)."),
+    f("art_url", "string or none", "The episode art (front matter `image`) as a link on this site; fall back to `podcast.art_url`."),
+];
+
 pub const ROUTE_KEYS: &[Field] = &[
     f("url", "template string", "Output URL for each rendered page. Ends in `/` for `<url>/index.html`. May use `item`, the `as` name, `pager.number`, and all globals."),
     f("each", "expression", "Render once per element of this Jinja expression, e.g. `tags` or `posts | selectattr(\"meta.series\") | groupby(\"meta.series\")`."),
@@ -250,6 +291,30 @@ pub const CONFIG_KEYS: &[Field] = &[
     f("watch.ignore", "list of paths", "Paths (relative to the blog folder, prefix match) whose changes never trigger a rebuild."),
     f("gallery.enabled", "bool", "Publish the pictures in `gallery/` as a photo gallery (default false). `folderblog gallery on` sets it and adds `gallery/` and the templates."),
     f("gallery.url", "string", "Where the gallery lives (default `/gallery/`)."),
+    f("podcast.enabled", "bool", "Publish the episodes in `podcast/` as a podcast with its own page and feed (default false). `folderblog podcast on` sets it, sets `guid`, and adds `podcast/`, the templates and `.gitignore` lines for audio."),
+    f("podcast.url", "string", "Where the show page lives (default `/podcast/`); the feed is `<url>feed.xml`."),
+    f("podcast.title", "string", "Show title (default: the title of `podcast/index.md`, else the site title)."),
+    f("podcast.description", "string", "Show description for podcast apps (default: the text of `podcast/index.md`)."),
+    f("podcast.author", "string", "Shown as the show's author (default: the site author)."),
+    f("podcast.owner_name", "string", "`itunes:owner` name (default: the author)."),
+    f("podcast.owner_email", "string", "`itunes:owner` email and `podcast:locked` owner. Public in the feed."),
+    f("podcast.language", "string", "Show language (default: the site language)."),
+    f("podcast.category", "string", "An Apple Podcasts category, e.g. `Technology` or `Society & Culture`. Required; `check` lists the valid ones."),
+    f("podcast.subcategory", "string", "Optional subcategory, e.g. `Tech News` under `News`."),
+    f("podcast.explicit", "bool", "Whether the show is explicit (default false); episodes can override."),
+    f("podcast.type", "string", "`episodic` (default, newest first) or `serial` (in order)."),
+    f("podcast.image", "string", "Show art: a path inside `podcast/` (default `podcast/cover.jpg` or `.png`) or an https URL. Square, 1400-3000 px, JPEG or PNG, RGB."),
+    f("podcast.guid", "string", "`podcast:guid`, set once by `folderblog podcast on` from the feed URL. Never change it, even if the site moves."),
+    f("podcast.locked", "bool", "`podcast:locked`: ask other hosts not to import the show (default true)."),
+    f("podcast.license", "string", "Optional `podcast:license`, e.g. `cc-by-4.0`."),
+    f("podcast.medium", "string", "`podcast` or `video` (default: `video` when every episode is an MP4)."),
+    f("podcast.funding", "list of tables", "Support links: `funding = [{ url = \"https://…\", text = \"Support the show\" }]`."),
+    f("podcast.persons", "list of tables", "Show-wide hosts: `persons = [{ name = \"…\", role = \"host\", href = \"https://…\", img = \"https://…\" }]`."),
+    f("podcast.op3", "bool", "Count downloads with OP3 by prefixing enclosure URLs with `https://op3.dev/e/` (default false)."),
+    f("podcast.in_main_feed", "bool", "Also list episodes with the posts: in `posts`, tags, years and `/feed.xml` (default false). Front matter `in_main_feed` overrides it per episode."),
+    f("podcast.lightning_address", "string", "Optional Lightning address (`name@domain`) for listener tips, written as `podcast:value`. New to Lightning? Rizful (https://rizful.com) gives you an address."),
+    f("podcast.lightning_name", "string", "Name shown for the Lightning recipient (default: the author)."),
+    f("podcast.storage.public_url", "string", "Public https base URL where episode files are hosted, e.g. `https://media.example.com`. Enclosures are `<public_url>/<blog>/<slug>-<hash>.<ext>`. Without it, episodes are left out of the build."),
     f("analytics.goatcounter", "string", "Optional, off by default: base URL of a GoatCounter site (`https://` only), e.g. `https://stats.example.com`. When set, `folderblog build`, `deploy` and `watch` add GoatCounter's cookie-free counting script before `</head>` of every rendered HTML page; previews, draft and fixture builds never do. The 404 page counts a GoatCounter event named `404 host/path` instead of a page view. Pages that already contain `data-goatcounter` are left alone."),
     f("analytics.host_prefix", "bool", "Count pages as `host/path` so one GoatCounter site can serve several blogs (default true)."),
     f("deploy.type", "string", "`github`, `git` or `command`."),
@@ -300,7 +365,7 @@ hidden base theme: if a file is not in `theme/`, it does not exist.
 ## The only rules the engine enforces
 
 1. The engine owns: content discovery, Markdown rendering, post/page URLs, gallery URLs and image resizing,
-   `/feed.xml` (RSS, full content, absolute URLs) and `/sitemap.xml`.
+   podcast URLs and the podcast feed, `/feed.xml` (RSS, full content, absolute URLs) and `/sitemap.xml`.
    A theme cannot produce those two paths; link to them with `site.feed_url`.
    The engine also writes a `/robots.txt` that allows everything and names the sitemap,
    unless `static/robots.txt` or a theme file publishes that path instead.
@@ -458,6 +523,40 @@ navigation can link to it with `{{% if gallery.enabled %}}`.
   tag: `{{% for t in tags if t.slug == tag.slug %}}…{{% endfor %}}`.
 - HEIC/AVIF/RAW files are skipped with a warning (export them as JPEG).
 
+## The podcast
+
+When blog.toml has `[podcast] enabled = true`, each folder in `podcast/` with an `index.md`
+is an episode: the `index.md` is its show notes, beside one MP3 (audio) or MP4 (video).
+The engine owns the podcast's URLs and `<podcast.url>feed.xml` (iTunes and Podcasting 2.0
+tags), like `/feed.xml`; the theme owns how the pages look:
+
+| URL | template | variables |
+|---|---|---|
+| `podcast.url` | `theme/_podcast/index.html` | `podcast` (also `item`) |
+| `<podcast.url><slug>/` | `theme/_podcast/episode.html` | `episode` (also `item`) |
+
+Both must exist while the podcast is on (`folderblog podcast on` copies the default ones
+in; it never overwrites). `podcast` is a global on every page.
+
+- Episode folders follow the post rules: `2026-10-30-first-episode/` gives the date and the
+  slug `first-episode`; front matter `title`, `date`, `slug`, `tags`, `draft`, `summary` and
+  `image` (episode art) work as for posts. Podcast keys: `guid` (required, never change it),
+  `season`, `episode`, `episode_type` (`full`/`trailer`/`bonus`), `explicit`, `audio` (which
+  file, when there are several), `transcript` (default: the `.vtt`/`.srt` in the folder),
+  `chapters` (default: `chapters.json`), `persons`, `value` (Lightning recipients
+  `[{{name, address, split}}]`, default `inherit`) and `in_main_feed`.
+- Only MP3 and MP4 are accepted. Audio and video files are **never** copied into the built
+  site: the feed and players use `[podcast.storage] public_url`, and `folderblog preview`
+  plays the local file. Without a media host, episodes are left out of builds.
+- Transcripts, `chapters.json` and art are published beside the episode page.
+- `podcast/index.md` gives the show its title and intro; `podcast/cover.jpg` is the show art.
+- `folderblog check` applies strict podcast rules as errors: required feed tags, https
+  everywhere, known size and duration, the file really being MP3/MP4, square 1400-3000 px
+  art, a valid Apple category, unique guids that have not changed since the last deploy,
+  valid chapters JSON and transcripts.
+- Never edit `podcast/` to make a design work; `folderblog preview --fixtures stress` has
+  sample episodes (turn the podcast on first).
+
 ## Template context
 
 Every template sees these globals:
@@ -490,6 +589,12 @@ Every template sees these globals:
 ### gallery tag
 
 {gallery_tag}
+### podcast
+
+{podcast}
+### episode
+
+{episode}
 ### Filters
 
 folderblog filters:
@@ -519,6 +624,7 @@ group with `posts | groupby("year")`.
 - `drafts/` — only in `preview`.
 - `static/` — copied to the site root untouched (favicons, CNAME, downloads).
 - `gallery/` — pictures for the photo gallery, when it is on (see **The photo gallery**).
+- `podcast/` — the show and its episode folders, when the podcast is on (see **The podcast**).
 - `data/` — JSON/TOML/YAML exposed as `data`.
 - Front matter is optional (YAML between `---` or TOML between `+++`). Known keys:
   `title`, `date`, `tags`, `slug`, `layout`, `draft`, `excerpt`/`summary`, `updated`,
@@ -540,7 +646,7 @@ group with `posts | groupby("year")`.
    `folderblog preview --fixtures stress` renders your theme against stress content:
    very long titles, no-title posts, images, bundles, code, tables, footnotes, raw HTML,
    deep tag lists, many years. Fixture sets: {fixtures}. Fixtures replace only
-   `posts/`, `pages/`, `drafts/` and `gallery/` (the gallery still needs `[gallery] enabled = true`); blog.toml, `[params]`, `data/` and `static/` stay yours.
+   `posts/`, `pages/`, `drafts/`, `gallery/` and `podcast/` (the gallery and podcast still need to be turned on in blog.toml); blog.toml, `[params]`, `data/` and `static/` stay yours.
    `--fixtures` also works with `build`, `check` and `data`
    (`folderblog data --fixtures stress` lists the fixture URLs). No fixture uses a custom
    layout, so render one yourself if you add `_layouts/<name>.html`.
@@ -568,6 +674,8 @@ that path is listed in `watch.ignore`.
         photo = table(PHOTO_FIELDS),
         album = table(ALBUM_FIELDS),
         gallery_tag = table(GALLERY_TAG_FIELDS),
+        podcast = table(PODCAST_FIELDS),
+        episode = table(EPISODE_FIELDS),
         filters = pairs(FILTERS),
         tests = TESTS.iter().map(|b| format!("`{b}`")).collect::<Vec<_>>().join(", "),
         builtin = BUILTIN_FILTERS.iter().map(|b| format!("`{b}`")).collect::<Vec<_>>().join(", "),

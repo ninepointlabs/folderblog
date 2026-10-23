@@ -27,6 +27,7 @@ without touching the engine.
 - [Running in the background](#running-in-the-background)
 - [Writing](#writing)
 - [Photo gallery](#photo-gallery)
+- [Podcast](#podcast)
 - [Themes and design](#themes-and-design)
 - [Configuration (`blog.toml`)](#configuration-blogtoml)
 - [Other hosts](#other-hosts)
@@ -48,6 +49,9 @@ without touching the engine.
 - Tables, footnotes, task lists, syntax highlighting, and raw HTML are all supported.
 - An optional photo gallery: drop pictures into `gallery/`, folders become albums, and a
   small `.md` beside a photo adds a title, caption and tags.
+- An optional podcast: one folder per episode in `podcast/` (show notes plus an MP3 or
+  MP4), a show page, episode pages with a player, and a feed with iTunes and
+  Podcasting 2.0 tags. Audio is never put in the site or in git.
 - Deleting a file unpublishes it. Your files are only ever read, never modified.
 
 **Publishing**
@@ -291,6 +295,7 @@ scripts and status bars.
   static/       copied to the site root untouched (favicon, CNAME, downloads)
   data/         JSON/TOML/YAML files available to templates
   gallery/      pictures for the photo gallery (after `folderblog gallery on`)
+  podcast/      the show and one folder per episode (after `folderblog podcast on`)
   theme/        all templates and styles; this decides what the site looks like
   AGENTS.md     the theme contract for coding agents (generated)
   .blog/        folderblog's own state; ignore it
@@ -392,6 +397,47 @@ Before the boats go out, the water is completely still.
 
 `folderblog gallery off` turns it off again and leaves your pictures where they are.
 
+## Podcast
+
+A podcast is one more part of the blog, with its own folder:
+
+```sh
+folderblog podcast on          # in the blog folder, or: folderblog podcast on ~/Blogs/myblog
+```
+
+This sets `[podcast] enabled = true` and a permanent `guid` in `blog.toml`, creates
+`podcast/`, adds the templates to `theme/_podcast/` (never overwriting yours), and adds the
+audio file types under `podcast/` to `.gitignore`. Then:
+
+```
+podcast/
+  index.md                       the show's title and description
+  cover.jpg                      show art: square, 1400-3000 px, JPEG or PNG
+  2026-10-30-first-episode/
+    index.md                     show notes; front matter guid, season, episode, summary…
+    episode.mp3                  MP3 for audio, MP4 for video
+    transcript.vtt               optional (.vtt or .srt), published beside the episode
+    chapters.json                optional Podcasting 2.0 chapters
+```
+
+- The show page is `/podcast/`, each episode `/podcast/<slug>/`, and the feed
+  `/podcast/feed.xml` (iTunes and Podcasting 2.0: `podcast:guid`, `podcast:locked`,
+  transcripts, chapters, persons, funding, and `podcast:value` for a Lightning address).
+- Size, duration and type are read from the file (and cached in `.blog/`); you never
+  write them by hand. Only MP3 and MP4 are accepted; anything else gets a clear message.
+- Audio is never copied into the built site. Enclosures point at
+  `[podcast.storage] public_url` as `<public_url>/<blog>/<slug>-<hash>.mp3`, so an edited
+  file gets a new URL. Until that is set, episodes are left out of the build. `folderblog
+  preview` plays the local file.
+- Episodes stay on `/podcast/` by default; `in_main_feed = true` (or `in_main_feed: true`
+  on one episode) also lists them with the posts and in `/feed.xml`.
+- `folderblog check` is strict about podcasts: required tags, https everywhere, known
+  length and duration, real MP3/MP4 data, art size, Apple categories, valid chapters and
+  transcripts, and episode guids that are unique and unchanged since the last deploy.
+- `folderblog podcast` lists the episodes, the feed URL and any problems.
+
+`folderblog podcast off` turns it off again and leaves your episodes where they are.
+
 ## Themes and design
 
 Every new blog gets a plain, readable default theme in `theme/`. Change anything: it is
@@ -459,6 +505,16 @@ ignore = []                                      # paths that never trigger a re
 [gallery]
 enabled = false                                  # `folderblog gallery on` turns it on
 url = "/gallery/"
+
+[podcast]
+enabled = false                                  # `folderblog podcast on` turns it on
+category = "Technology"                          # an Apple Podcasts category
+owner_email = "you@example.com"                  # public in the feed
+# lightning_address = "you@rizful.com"           # optional podcast:value tips
+# in_main_feed = false                           # also list episodes with posts
+
+[podcast.storage]
+public_url = "https://media.example.com"         # where episode files are hosted
 
 # Optional, off by default. See "Analytics" below.
 # [analytics]
@@ -537,6 +593,7 @@ branch. Uncommitted edits on the branch still publish.
 | `folderblog check [BLOG] [--fixtures SET]` | Find template errors, feed problems, broken links |
 | `folderblog data [URL]` | Template context for a page (or list all pages) |
 | `folderblog gallery [on\|off] [BLOG]` | Turn the photo gallery on or off (adds `gallery/` and its templates) |
+| `folderblog podcast [on\|off] [BLOG]` | Turn the podcast on or off, or list episodes and problems |
 | `folderblog agents-md [BLOG] [--write]` | Refresh the blog's AGENTS.md |
 | `folderblog guide` | The step-by-step guide to everything ([docs/GUIDE.md](docs/GUIDE.md)) |
 | `folderblog man` | The same guide as a manual page (`man folderblog` once installed) |

@@ -3,6 +3,7 @@
 use crate::config::Config;
 use crate::content::{self, Body, DateSource, Kind, Source};
 use crate::gallery::{self, Gallery};
+use crate::podcast::{self, Show};
 use crate::markdown::{self, Markup};
 use crate::state::State;
 use crate::templates::{EnvSettings, make_env, prefix_base};
@@ -10,7 +11,7 @@ use crate::util::{resolve_relative, slugify, strip_tags};
 use anyhow::{Context, Result, bail};
 use chrono::{DateTime, Datelike, FixedOffset};
 use minijinja::{Environment, UndefinedBehavior, Value};
-use serde_json::Value as Json;
+use serde_json::{Map, Value as Json};
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::path::{Path, PathBuf};
 
@@ -21,6 +22,8 @@ pub struct LoadOptions {
     pub fixtures: Option<String>,
     pub persist_state: bool,
     pub strict_undefined: bool,
+    /// Preview: episode pages play the local audio file (served by the preview server).
+    pub local_media: bool,
 }
 
 pub struct Item {
@@ -71,6 +74,9 @@ pub struct Site {
     /// Set when `[gallery] enabled = true`.
     pub gallery: Option<Gallery>,
     pub gallery_values: GalleryValues,
+    /// Set when `[podcast] enabled = true`.
+    pub podcast: Option<Show>,
+    pub podcast_values: PodcastValues,
     /// blog.toml `image`, else `static/og-default.png` if it exists.
     pub image: Option<Image>,
 }
@@ -82,6 +88,13 @@ pub struct GalleryValues {
     pub albums: Vec<Value>,
     /// (route, tag value)
     pub tags: Vec<(String, Value)>,
+    pub root: Value,
+}
+
+/// Template values for the podcast, parallel to `Show::episodes`.
+#[derive(Default)]
+pub struct PodcastValues {
+    pub episodes: Vec<Value>,
     pub root: Value,
 }
 
@@ -151,8 +164,13 @@ impl Site {
             undefined: if opts.strict_undefined { UndefinedBehavior::SemiStrict } else { UndefinedBehavior::Chainable },
         });
 
-        let found = content::discover(&content_root, opts.drafts)?;
-        let mut warnings = found.warnings;
+        let mut found = content::discover(&content_root, opts.drafts)?;
+        let mut warnings = std::mem::take(&mut found.warnings);
+        let pod_found = if cfg.podcast.enabled { Some(podcast::discover(&content_root, opts.drafts, &mut warnings)?) } else { None };
+        if let Some(pf) = &pod_found {
+            found.sources.extend(pf.sources.iter().cloned());
+            found.loose_files.extend(pf.loose_files.iter().cloned());
+        }
 
         // Pass 1: slugs, dates and routes, which the link resolver needs.
         struct Pre {
@@ -164,7 +182,8 @@ impl Site {
         let mut pre = vec![];
         for src in found.sources {
             let slug = content::slug_for(&src);
-            let date = content::resolve_date(&src, &slug, &mut state)?;
+            let date_key = if src.kind == Kind::Episode { format!("podcast:{slug}") } else { slug.clone() };
+            let date = content::resolve_date(&src, &date_key, &mut state)?;
             let route = if let Some(u) = src.front.get("url").and_then(|v| v.as_str()) {
                 let u = u.trim();
                 if u.starts_with('/') { u.to_string() } else { format!("/{u}") }
@@ -179,6 +198,7 @@ impl Site {
                         }
                         if parts.is_empty() { "/".into() } else { format!("/{}/", parts.join("/")) }
                     }
+                    Kind::Episode => format!("{}{slug}/", cfg.podcast.url),
                 }
             };
             pre.push(Pre { src, slug, date, route });
@@ -207,11 +227,13 @@ impl Site {
             match kind {
                 Kind::Post => format!("/posts/{rel}"),
                 Kind::Page => format!("/{rel}"),
+                Kind::Episode => format!("/{}/{rel}", podcast::PODCAST_DIR),
             }
         };
         let section_base = |kind: Kind| match kind {
             Kind::Post => content_root.join("posts"),
             Kind::Page => content_root.join("pages"),
+            Kind::Episode => content_root.join(podcast::PODCAST_DIR),
         };
         let mut item_files: HashMap<usize, Vec<(PathBuf, String)>> = HashMap::new();
         let mut loose_files = vec![];
@@ -251,8 +273,13 @@ impl Site {
                     out
                 }
                 None => {
-                    loose_files.push((abs.clone(), site_src.clone()));
-                    site_src.clone()
+                    // Show art and other files directly in podcast/ live under the show's URL.
+                    let out = match kind {
+                        Kind::Episode => format!("{}{}", cfg.podcast.url, rel.to_string_lossy().replace('\\', "/")),
+                        _ => site_src.clone(),
+                    };
+                    loose_files.push((abs.clone(), out.clone()));
+                    out
                 }
             };
             published.insert(site_src, prefix_base(&base_path, &out));
@@ -316,6 +343,7 @@ impl Site {
         let mut src_dirs: HashMap<String, String> = HashMap::new();
         let mut posts = vec![];
         let mut pages = vec![];
+        let mut episodes = vec![];
         for (i, p) in pre.into_iter().enumerate() {
             let fm_title = p.src.front.get("title").and_then(|v| v.as_str()).map(|s| s.to_string());
             let src_dir_site = {
@@ -361,7 +389,7 @@ impl Site {
                         ("slug", p.slug.clone()),
                         ("url", prefix_base(&base_path, &p.route)),
                         ("source", p.src.rel.to_string_lossy().replace('\\', "/")),
-                        ("kind", if p.src.kind == Kind::Post { "post".into() } else { "page".into() }),
+                        ("kind", kind_name(p.src.kind).into()),
                     ]));
                     let markup = Markup {
                         env: &env,
@@ -404,6 +432,7 @@ impl Site {
             match item.src.kind {
                 Kind::Post => posts.push(item),
                 Kind::Page => pages.push(item),
+                Kind::Episode => episodes.push(item),
             }
         }
         // `{{ post.meta.cover | resolve_url(post) }}`: resolve a path written in front matter
@@ -457,6 +486,30 @@ impl Site {
             wa.partial_cmp(&wb).unwrap().then(a.title.to_lowercase().cmp(&b.title.to_lowercase()))
         });
 
+        let podcast = match &pod_found {
+            Some(pf) => {
+                let cache = if opts.fixtures.is_some() { "podcast-fixtures" } else { "podcast" };
+                let cache_dir = blog_dir.join(crate::state::STATE_DIR).join("cache").join(cache);
+                let blog_name = blog_dir.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
+                let args = podcast::ShowArgs {
+                    cfg: &cfg,
+                    blog_name: &blog_name,
+                    content_root: &content_root,
+                    cache_dir: &cache_dir,
+                    base_path: &base_path,
+                    preview: opts.local_media,
+                    fixtures: opts.fixtures.is_some(),
+                    index: pf.index.as_deref(),
+                    media: &pf.media,
+                    files_by_url: &files_by_url,
+                };
+                let show = podcast::load_show(args, episodes, &mut state, &mut warnings)?;
+                state.save()?;
+                Some(show)
+            }
+            None => None,
+        };
+
         let mut site = Site {
             blog_dir: blog_dir.clone(),
             content_root,
@@ -472,6 +525,8 @@ impl Site {
             opts,
             gallery,
             gallery_values: GalleryValues::default(),
+            podcast,
+            podcast_values: PodcastValues::default(),
             image: site_image,
         };
         site.build_values()?;
@@ -506,8 +561,12 @@ impl Site {
     }
 
     fn item_value(&self, it: &Item, kind: &str, older: Option<Value>, newer: Option<Value>) -> Value {
+        Value::from_serialize(self.item_map(it, kind, older, newer))
+    }
+
+    fn item_map(&self, it: &Item, kind: &str, older: Option<Value>, newer: Option<Value>) -> BTreeMap<&'static str, Value> {
         let url = prefix_base(&self.base_path, &it.route);
-        let mut m: BTreeMap<&str, Value> = BTreeMap::new();
+        let mut m: BTreeMap<&'static str, Value> = BTreeMap::new();
         m.insert("kind", Value::from(kind));
         m.insert("title", Value::from(it.title.clone()));
         m.insert("slug", Value::from(it.slug.clone()));
@@ -580,7 +639,7 @@ impl Site {
             .collect();
         m.insert("files", Value::from(files));
         insert_image(&mut m, &it.image);
-        Value::from_serialize(m)
+        m
     }
 
     pub fn layout_of(&self, it: &Item) -> String {
@@ -589,6 +648,7 @@ impl Site {
             None => match it.src.kind {
                 Kind::Post => "post".into(),
                 Kind::Page => "page".into(),
+                Kind::Episode => "episode".into(),
             },
         }
     }
@@ -611,15 +671,23 @@ impl Site {
             p.value = v;
         }
 
+        self.podcast_values = self.podcast_values();
+        // Posts as listed on the site: with the episodes that also go in the main feed.
+        let listed = self.listed();
+        let listed_values: Vec<Value> = listed.iter().map(|(it, ep)| match ep {
+            Some(i) => self.podcast_values.episodes[*i].clone(),
+            None => it.value.clone(),
+        }).collect();
+
         // Tags and years.
         let mut tags: BTreeMap<String, (String, Vec<Value>)> = BTreeMap::new();
         let mut years: BTreeMap<i32, Vec<Value>> = BTreeMap::new();
-        for p in &self.posts {
+        for ((p, _), v) in listed.iter().zip(&listed_values) {
             for t in &p.tags {
-                tags.entry(slugify(t)).or_insert_with(|| (t.clone(), vec![])).1.push(p.value.clone());
+                tags.entry(slugify(t)).or_insert_with(|| (t.clone(), vec![])).1.push(v.clone());
             }
             if let Some((d, _)) = &p.date {
-                years.entry(d.year()).or_default().push(p.value.clone());
+                years.entry(d.year()).or_default().push(v.clone());
             }
         }
         let mut tag_list: Vec<(String, String, Vec<Value>)> =
@@ -650,7 +718,7 @@ impl Site {
 
         let mut site = Self::site_value(&self.cfg, &self.base_path, &self.image);
         // site.updated: newest post date (deterministic, unlike a build timestamp).
-        let updated = self.posts.iter().filter_map(|p| p.date.as_ref().map(|d| d.0)).max();
+        let updated = listed.iter().filter_map(|(p, _)| p.date.as_ref().map(|d| d.0)).max();
         let mut sm: BTreeMap<String, Value> = BTreeMap::new();
         if let Ok(iter) = site.try_iter() {
             for k in iter {
@@ -665,7 +733,7 @@ impl Site {
         let g = &mut self.globals;
         g.insert("site".into(), site);
         g.insert("params".into(), Value::from_serialize(&self.cfg.params));
-        g.insert("posts".into(), Value::from(self.posts.iter().map(|p| p.value.clone()).collect::<Vec<_>>()));
+        g.insert("posts".into(), Value::from(listed_values));
         g.insert("pages".into(), Value::from(self.pages.iter().map(|p| p.value.clone()).collect::<Vec<_>>()));
         g.insert("tags".into(), Value::from(tag_values));
         g.insert("years".into(), Value::from(year_values));
@@ -673,7 +741,139 @@ impl Site {
         g.insert("preview".into(), Value::from(self.opts.drafts));
         self.gallery_values = self.gallery_values();
         self.globals.insert("gallery".into(), self.gallery_values.root.clone());
+        self.globals.insert("podcast".into(), self.podcast_values.root.clone());
         Ok(())
+    }
+
+    /// Posts, plus the episodes that are also listed with them, newest first. The index is
+    /// the episode's position in `Show::episodes`.
+    pub fn listed(&self) -> Vec<(&Item, Option<usize>)> {
+        let mut v: Vec<(&Item, Option<usize>)> = self.posts.iter().map(|p| (p, None)).collect();
+        if let Some(show) = &self.podcast {
+            let extra: Vec<(&Item, Option<usize>)> =
+                show.episodes.iter().enumerate().filter(|(_, e)| e.in_main_feed).map(|(i, e)| (&e.item, Some(i))).collect();
+            if !extra.is_empty() {
+                v.extend(extra);
+                v.sort_by(|a, b| {
+                    let da = a.0.date.as_ref().map(|d| d.0);
+                    let db = b.0.date.as_ref().map(|d| d.0);
+                    db.cmp(&da).then(a.0.slug.cmp(&b.0.slug))
+                });
+            }
+        }
+        v
+    }
+
+    fn podcast_values(&self) -> PodcastValues {
+        let cfg = &self.cfg.podcast;
+        let url = |r: &str| prefix_base(&self.base_path, r);
+        let absolute = |r: &str| crate::templates::absolute(&self.cfg.base_url, &self.base_path, &url(r));
+        let none = || Value::from(());
+        // Art as a link on the site itself where possible, so previews show the local file.
+        let origin = &self.cfg.base_url[..self.cfg.base_url.len() - self.base_path.len()];
+        let art = |img: &Option<Image>| match img {
+            Some(i) => Value::from(i.url.strip_prefix(origin).filter(|p| p.starts_with('/')).unwrap_or(&i.url).to_string()),
+            None => none(),
+        };
+        let mut m: BTreeMap<&str, Value> = BTreeMap::new();
+        let feed_route = format!("{}{}", cfg.url, podcast::FEED_FILE);
+        m.insert("url", Value::from(url(&cfg.url)));
+        m.insert("permalink", Value::from(absolute(&cfg.url)));
+        m.insert("feed_url", Value::from(url(&feed_route)));
+        m.insert("feed_url_absolute", Value::from(absolute(&feed_route)));
+        m.insert("author", Value::from(if cfg.author.is_empty() { self.cfg.author.clone() } else { cfg.author.clone() }));
+        m.insert("explicit", Value::from(cfg.explicit));
+        m.insert("category", Value::from(cfg.category.clone()));
+        m.insert("subcategory", Value::from(cfg.subcategory.clone()));
+        m.insert("lightning_address", if cfg.lightning_address.is_empty() { none() } else { Value::from(cfg.lightning_address.clone()) });
+        m.insert("funding", Value::from_serialize(&cfg.funding));
+        let Some(show) = &self.podcast else {
+            m.insert("enabled", Value::from(false));
+            m.insert("title", Value::from(if cfg.title.is_empty() { self.cfg.title.clone() } else { cfg.title.clone() }));
+            m.insert("description", Value::from(cfg.description.clone()));
+            m.insert("intro", Value::from_safe_string(String::new()));
+            m.insert("meta", Value::from_serialize(Map::new()));
+            m.insert("image", none());
+            m.insert("art_url", none());
+            m.insert("medium", Value::from("podcast"));
+            m.insert("count", Value::from(0));
+            m.insert("episodes", Value::from(Vec::<Value>::new()));
+            return PodcastValues { root: Value::from_serialize(m), ..Default::default() };
+        };
+        let link = |e: &podcast::Episode| self.link_value(&e.item);
+        let n = show.episodes.len();
+        let episodes: Vec<Value> = show
+            .episodes
+            .iter()
+            .enumerate()
+            .map(|(i, e)| {
+                let newer = (i > 0).then(|| link(&show.episodes[i - 1]));
+                let older = (i + 1 < n).then(|| link(&show.episodes[i + 1]));
+                let mut v = self.item_map(&e.item, "episode", older, newer);
+                v.insert("guid", Value::from(e.guid.clone()));
+                v.insert("season", e.season.map(Value::from).unwrap_or_else(none));
+                v.insert("number", e.number.map(Value::from).unwrap_or_else(none));
+                v.insert("episode_type", Value::from(e.episode_type.clone()));
+                v.insert("explicit", Value::from(e.explicit));
+                v.insert("in_main_feed", Value::from(e.in_main_feed));
+                v.insert(
+                    "audio",
+                    match &e.media {
+                        Some(md) => {
+                            let mut a: BTreeMap<&str, Value> = BTreeMap::new();
+                            a.insert("url", md.url.clone().map(Value::from).unwrap_or_else(none));
+                            a.insert("enclosure", md.enclosure.clone().map(Value::from).unwrap_or_else(none));
+                            a.insert("type", Value::from(md.info.kind.mime()));
+                            a.insert("ext", Value::from(md.info.kind.ext()));
+                            a.insert("is_video", Value::from(md.info.kind.is_video()));
+                            a.insert("bytes", Value::from(md.info.bytes));
+                            a.insert("duration", Value::from(md.info.duration.round() as u64));
+                            a.insert("duration_hms", Value::from(podcast::duration_hms(md.info.duration)));
+                            Value::from_serialize(a)
+                        }
+                        None => none(),
+                    },
+                );
+                v.insert(
+                    "transcript",
+                    match &e.transcript {
+                        Some((route, ty)) => Value::from_serialize(BTreeMap::from([("url", url(route)), ("type", ty.to_string())])),
+                        None => none(),
+                    },
+                );
+                let chapters: Vec<Value> = e
+                    .chapters
+                    .iter()
+                    .flat_map(|(_, c)| c.iter())
+                    .filter(|c| c.toc)
+                    .map(|c| {
+                        let mut cm: BTreeMap<&str, Value> = BTreeMap::new();
+                        cm.insert("start", Value::from(c.start));
+                        cm.insert("start_hms", Value::from(podcast::duration_hms(c.start.floor())));
+                        cm.insert("title", Value::from(c.title.clone()));
+                        cm.insert("url", c.url.clone().map(Value::from).unwrap_or_else(none));
+                        cm.insert("img", c.img.clone().map(Value::from).unwrap_or_else(none));
+                        Value::from_serialize(cm)
+                    })
+                    .collect();
+                v.insert("chapters", Value::from(chapters));
+                v.insert("chapters_url", e.chapters.as_ref().map(|(r, _)| Value::from(url(r))).unwrap_or_else(none));
+                v.insert("persons", Value::from_serialize(&e.persons));
+                v.insert("art_url", art(&e.image));
+                Value::from_serialize(v)
+            })
+            .collect();
+        m.insert("enabled", Value::from(true));
+        m.insert("title", Value::from(show.title.clone()));
+        m.insert("description", Value::from(show.description.clone()));
+        m.insert("intro", Value::from_safe_string(show.intro_html.clone()));
+        m.insert("meta", Value::from_serialize(&show.front));
+        m.insert("image", show.image.as_ref().map(|i| Value::from(i.url.clone())).unwrap_or_else(none));
+        m.insert("art_url", art(&show.image));
+        m.insert("medium", Value::from(show.medium));
+        m.insert("count", Value::from(episodes.len()));
+        m.insert("episodes", Value::from(episodes.clone()));
+        PodcastValues { episodes, root: Value::from_serialize(m) }
     }
 
     fn photo_link(&self, p: &gallery::Photo) -> Value {
@@ -828,6 +1028,14 @@ impl Site {
         m.insert("albums", Value::from(albums.clone()));
         m.insert("tags", Value::from(tags.iter().map(|t| t.1.clone()).collect::<Vec<_>>()));
         GalleryValues { photos, albums, tags, root: Value::from_serialize(m) }
+    }
+}
+
+pub fn kind_name(k: Kind) -> &'static str {
+    match k {
+        Kind::Post => "post",
+        Kind::Page => "page",
+        Kind::Episode => "episode",
     }
 }
 

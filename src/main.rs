@@ -11,6 +11,7 @@ mod gallery;
 mod github;
 mod manpage;
 mod markdown;
+mod podcast;
 mod preview;
 mod render;
 mod site;
@@ -129,6 +130,9 @@ fn run(cli: Cli) -> Result<i32> {
             for e in &rep.errors {
                 println!("error: {e}");
             }
+            for n in &rep.notes {
+                println!("note: {n}");
+            }
             let label = fixtures.map(|f| format!(" (fixtures: {f})")).unwrap_or_default();
             if rep.errors.is_empty() {
                 println!("ok: {} files rendered, feed valid, no broken internal links{label}", rep.outputs);
@@ -238,6 +242,15 @@ fn run(cli: Cli) -> Result<i32> {
             Ok(0)
         }
         Cmd::Gallery { state, blog } => gallery_cmd(&blog_dir(blog)?, state.as_deref()),
+        Cmd::Podcast { state, blog } => {
+            // `folderblog podcast BLOG` shows that blog's podcast.
+            let (state, blog) = match state {
+                Some(s) if blog.is_none() && !matches!(s.as_str(), "on" | "off") => (None, Some(PathBuf::from(s))),
+                Some(s) if !matches!(s.as_str(), "on" | "off") => bail!("unknown podcast action {s:?}; use `on` or `off`"),
+                s => (s, blog),
+            };
+            podcast_cmd(&blog_dir(blog)?, state.as_deref())
+        }
         Cmd::AgentsMd { blog, write } => {
             let blog = blog_dir(blog)?;
             let path = blog.join("AGENTS.md");
@@ -298,6 +311,91 @@ fn gallery_cmd(blog: &Path, state: Option<&str>) -> Result<i32> {
     }
     println!("gallery is on: drop pictures into {} and they appear at {page}", dir.display());
     println!("subfolders become albums; a sidecar like sunset.md beside sunset.jpg adds a title, caption and tags");
+    Ok(0)
+}
+
+fn podcast_cmd(blog: &Path, state: Option<&str>) -> Result<i32> {
+    let cfg_path = blog.join(config::CONFIG_FILE);
+    let cfg = config::Config::load(blog)?;
+    let page = format!("{}{}", cfg.base_url, cfg.podcast.url);
+    let Some(state) = state else {
+        if !cfg.podcast.enabled {
+            println!("the podcast is off; `folderblog podcast on` turns it on");
+            return Ok(0);
+        }
+        println!("the podcast is on: {page}");
+        println!("feed: {}", podcast::feed_url(&cfg));
+        match &cfg.podcast.storage {
+            Some(s) => println!("audio is hosted at {}", s.public_url),
+            None => println!("audio hosting: not set up yet, so episodes stay out of the feed (set [podcast.storage] public_url)"),
+        }
+        let site = site::Site::load(blog, LoadOptions { drafts: true, ..Default::default() })?;
+        let show = site.podcast.as_ref().context("podcast did not load")?;
+        let drafts = show.episodes.iter().filter(|e| e.item.src.draft).count();
+        println!("{} episode(s), {drafts} of them draft(s)", show.episodes.len());
+        for e in &show.episodes {
+            let date = e.item.date.as_ref().map(|d| d.0.format("%Y-%m-%d").to_string()).unwrap_or_default();
+            let len = e.media.as_ref().map(|m| podcast::duration_hms(m.info.duration)).unwrap_or_else(|| "no audio".into());
+            let draft = if e.item.src.draft { "  [draft]" } else { "" };
+            println!("  {date}  {}  ({len}){draft}  {}", e.item.title, e.folder);
+            if let Some(m) = &e.media {
+                println!("      audio file on the host: {}", m.key);
+            }
+        }
+        for p in &show.problems {
+            println!("problem: {p}");
+        }
+        return Ok(if show.problems.is_empty() { 0 } else { 1 });
+    };
+    let on = state == "on";
+    let text = std::fs::read_to_string(&cfg_path)?;
+    if cfg.podcast.enabled != on || (on && cfg.podcast.guid.is_empty()) {
+        std::fs::write(&cfg_path, podcast::set_enabled(&text, on)?)?;
+    }
+    if !on {
+        println!("the podcast is off; podcast/ and the theme's _podcast/ templates were left as they are");
+        return Ok(0);
+    }
+    let dir = blog.join(podcast::PODCAST_DIR);
+    if !dir.is_dir() {
+        std::fs::create_dir_all(&dir)?;
+        println!("created {}", dir.display());
+    }
+    let index = dir.join("index.md");
+    if !index.exists() {
+        std::fs::write(&index, format!("# {}\n\nA sentence or two about the show. This is the intro on the show page and the description podcast apps show.\n", cfg.title))?;
+        println!("added podcast/index.md (the show's title and description)");
+    }
+    // Templates come from the default theme; ones the blog already has are never overwritten.
+    let src = fixtures::DEFAULT_THEME.get_dir("_podcast").context("default theme has no _podcast/")?;
+    for f in src.files() {
+        let target = blog.join("theme").join(f.path());
+        if !target.exists() {
+            std::fs::create_dir_all(target.parent().unwrap())?;
+            std::fs::write(&target, f.contents())?;
+            println!("added theme/{}", f.path().display());
+        }
+    }
+    // Audio never goes into git: it is hosted separately and can be large.
+    let gi = blog.join(".gitignore");
+    let existing = std::fs::read_to_string(&gi).unwrap_or_default();
+    if !existing.contains(podcast::GITIGNORE_BLOCK) {
+        let sep = if existing.is_empty() || existing.ends_with('\n') { "" } else { "\n" };
+        std::fs::write(&gi, format!("{existing}{sep}{}", podcast::GITIGNORE_BLOCK))?;
+        println!("added the podcast audio files to .gitignore");
+    }
+    let base = std::fs::read_to_string(blog.join("theme/_layouts/base.html")).unwrap_or_default();
+    if !base.contains("podcast") {
+        println!("note: the theme's navigation doesn't link to the podcast yet; add e.g.");
+        println!("  {{% if podcast.enabled and podcast.count %}}<a href=\"{{{{ podcast.url }}}}\">{{{{ podcast.title }}}}</a>{{% endif %}}");
+        println!("  to theme/_layouts/base.html");
+    }
+    println!("the podcast is on: {page}");
+    println!("next:");
+    println!("  1. add show art as podcast/cover.jpg (square, 1400 to 3000 px)");
+    println!("  2. in blog.toml under [podcast], set category (e.g. \"Technology\"), author and owner_email");
+    println!("  3. for each episode, make a folder like podcast/2026-10-30-first-episode/ with an index.md (show notes) and the MP3 (or MP4 for video)");
+    println!("  4. run `folderblog podcast` to see the show, and `folderblog check` before you publish");
     Ok(0)
 }
 

@@ -83,8 +83,17 @@ fn build_inner(blog_dir: &Path, out: Option<&Path>, opts: LoadOptions) -> Result
         let site = Site::load(blog_dir, opts.clone())?;
         let plan = site.plan()?;
         let n = site.write_to(&plan, &tmp)?;
+
         if opts.fixtures.is_none() {
             run_hooks(blog_dir, &cfg.build.post, &tmp, "post-build")?;
+        }
+        // What a real build would put live, so a later deploy can record it.
+        if !opts.drafts
+            && opts.fixtures.is_none()
+            && out == public_dir(blog_dir)
+            && let Some(show) = &site.podcast
+        {
+            crate::podcast::save_snapshot(blog_dir, crate::podcast::BUILT_SNAPSHOT, &crate::podcast::snapshot(show))?;
         }
         Ok(BuildResult { out_dir: out.clone(), outputs: n, warnings: site.warnings })
     })();

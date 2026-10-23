@@ -158,6 +158,9 @@ impl Site {
         if let Some(g) = &self.gallery {
             self.plan_gallery(g, &mut outputs, &mut errors);
         }
+        if let Some(show) = &self.podcast {
+            self.plan_podcast(show, &mut outputs, &mut errors);
+        }
 
         // static/: copied untouched.
         let static_dir = self.blog_dir.join("static");
@@ -292,6 +295,58 @@ impl Site {
                 });
             }
         }
+    }
+
+    fn plan_podcast(&self, show: &crate::podcast::Show, outputs: &mut Vec<Output>, errors: &mut Vec<String>) {
+        let missing: Vec<&str> = crate::podcast::TEMPLATES.iter().copied().filter(|t| !self.theme_dir.join(t).is_file()).collect();
+        if !missing.is_empty() {
+            errors.push(format!(
+                "the podcast is on but theme/{} {} missing; run `folderblog podcast on` to add the podcast templates",
+                missing.join(", theme/"),
+                if missing.len() == 1 { "is" } else { "are" }
+            ));
+            return;
+        }
+        let pv = &self.podcast_values;
+        let src = crate::podcast::PODCAST_DIR;
+        let mut ctx = self.base_ctx(&show.route, "_podcast/index.html");
+        ctx.insert("item".into(), pv.root.clone());
+        outputs.push(Output {
+            path: url_to_file(&show.route),
+            url: prefix_base(&self.base_path, &show.route),
+            origin: format!("{src}/ (via theme/_podcast/index.html)"),
+            content: Content::Render { template: "_podcast/index.html".into(), ctx },
+            lastmod: None,
+        });
+        for (e, v) in show.episodes.iter().zip(&pv.episodes) {
+            let it = &e.item;
+            let mut ctx = self.base_ctx(&it.route, "_podcast/episode.html");
+            ctx.insert("item".into(), v.clone());
+            ctx.insert("episode".into(), v.clone());
+            outputs.push(Output {
+                path: url_to_file(&it.route),
+                url: prefix_base(&self.base_path, &it.route),
+                origin: format!("{} (via theme/_podcast/episode.html)", it.src.rel.display()),
+                content: Content::Render { template: "_podcast/episode.html".into(), ctx },
+                lastmod: it.date.as_ref().map(|d| d.0.to_rfc3339()),
+            });
+            for (abs, out) in &it.files {
+                outputs.push(Output {
+                    path: out.trim_start_matches('/').to_string(),
+                    url: prefix_base(&self.base_path, out),
+                    origin: abs.strip_prefix(&self.content_root).unwrap_or(abs).display().to_string(),
+                    content: Content::Copy(abs.clone()),
+                    lastmod: None,
+                });
+            }
+        }
+        outputs.push(Output {
+            path: show.feed_route.trim_start_matches('/').to_string(),
+            url: prefix_base(&self.base_path, &show.feed_route),
+            origin: "engine: podcast feed".into(),
+            content: Content::Bytes(crate::podcast::rss(self, show).into_bytes()),
+            lastmod: None,
+        });
     }
 
     fn expand_route(&self, rel: &str, spec: RouteSpec) -> Result<Vec<Output>> {

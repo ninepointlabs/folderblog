@@ -12,6 +12,8 @@ use std::path::{Path, PathBuf};
 pub enum Kind {
     Post,
     Page,
+    /// A podcast episode: a folder in `podcast/` (see `podcast.rs`).
+    Episode,
 }
 
 #[derive(Debug, Clone)]
@@ -164,7 +166,7 @@ fn walk_section(
     Ok(())
 }
 
-fn load_item(
+pub fn load_item(
     root: &Path,
     base: &Path,
     path: &Path,

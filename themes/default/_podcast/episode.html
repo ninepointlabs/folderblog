@@ -1,0 +1,51 @@
+{% extends "_layouts/base.html" %}
+{% block title %}{{ episode.title }} · {{ podcast.title }}{% endblock %}
+{% set og_type = "article" %}
+{% block description %}{{ episode.summary }}{% endblock %}
+{% block head %}<link rel="alternate" type="application/rss+xml" title="{{ podcast.title }}" href="{{ podcast.feed_url }}">
+<style>{% include "_podcast/podcast.css" %}</style>
+{% endblock %}
+{% block main %}
+<article class="post episode">
+  <header>
+    <p class="meta"><a href="{{ podcast.url }}">{{ podcast.title }}</a>{% if episode.season %} · Season {{ episode.season }}{% endif %}{% if episode.number %} · Episode {{ episode.number }}{% endif %}{% if episode.episode_type != "full" %} · {{ episode.episode_type | capitalize }}{% endif %}</p>
+    <h1>{{ episode.title }}</h1>
+    <p class="meta">
+      <time datetime="{{ episode.date }}">{{ episode.date | date("%B %-d, %Y") }}</time>{% if episode.audio %} · {{ episode.audio.duration_hms }}{% endif %}{% if episode.explicit %} · Explicit{% endif %}{% if episode.draft %} · <span class="draft">draft</span>{% endif %}
+    </p>
+  </header>
+  {% if episode.audio and episode.audio.url %}
+  {% if episode.audio.is_video %}
+  <video class="episode-player" controls preload="metadata" src="{{ episode.audio.url }}"{% if episode.art_url or podcast.art_url %} poster="{{ episode.art_url or podcast.art_url }}"{% endif %}>{% if episode.transcript and episode.transcript.type == "text/vtt" %}<track kind="captions" src="{{ episode.transcript.url }}" srclang="{{ site.language }}" label="Captions">{% endif %}</video>
+  {% else %}
+  <audio class="episode-player" controls preload="metadata" src="{{ episode.audio.url }}"></audio>
+  {% endif %}
+  <p class="meta"><a href="{{ episode.audio.url }}">Download the {% if episode.audio.is_video %}video{% else %}audio{% endif %}</a> ({{ episode.audio.bytes | filesizeformat }})</p>
+  {% else %}
+  <p class="empty">The audio for this episode isn't available yet.</p>
+  {% endif %}
+  {% if episode.chapters %}
+  <section class="episode-chapters" aria-labelledby="chapters">
+    <h2 id="chapters">Chapters</h2>
+    <ol>
+      {% for c in episode.chapters %}
+      <li><button type="button" class="chapter-seek" data-start="{{ c.start }}">{{ c.start_hms }}</button> {% if c.url %}<a href="{{ c.url }}">{{ c.title }}</a>{% else %}{{ c.title }}{% endif %}</li>
+      {% endfor %}
+    </ol>
+  </section>
+  {% endif %}
+  <div class="content">
+    {{ episode.content }}
+  </div>
+  {% if episode.transcript %}<p><a href="{{ episode.transcript.url }}">Read the transcript</a></p>{% endif %}
+  {% if episode.persons %}<p class="meta">With {% for p in episode.persons %}{% if p.href %}<a href="{{ p.href }}">{{ p.name }}</a>{% else %}{{ p.name }}{% endif %}{% if p.role %} ({{ p.role }}){% endif %}{% if not loop.last %}, {% endif %}{% endfor %}</p>{% endif %}
+  <footer>
+    {% if episode.tags %}<p class="tags">{% for t in episode.tags %}{% if episode.in_main_feed %}<a href="{{ ('/tags/' ~ t.slug ~ '/') | url }}">#{{ t.name }}</a>{% else %}#{{ t.name }}{% endif %}{% if not loop.last %} {% endif %}{% endfor %}</p>{% endif %}
+    <nav class="neighbours">
+      {% if episode.newer %}<a rel="next" href="{{ episode.newer.url }}">← {{ episode.newer.title }}</a>{% else %}<span></span>{% endif %}
+      {% if episode.older %}<a rel="prev" href="{{ episode.older.url }}">{{ episode.older.title }} →</a>{% endif %}
+    </nav>
+  </footer>
+</article>
+<script>{% include "_podcast/podcast.js" %}</script>
+{% endblock %}

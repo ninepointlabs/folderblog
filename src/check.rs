@@ -15,6 +15,8 @@ use std::path::Path;
 pub struct Report {
     pub errors: Vec<String>,
     pub warnings: Vec<String>,
+    /// Hints that are neither problems nor warnings (e.g. where to validate a podcast online).
+    pub notes: Vec<String>,
     pub outputs: usize,
 }
 
@@ -48,6 +50,30 @@ pub fn check(blog: &Path, fixtures: Option<String>) -> Result<Report> {
             }
         }
         Err(e) => rep.errors.push(format!("feed.xml was not written: {e}")),
+    }
+    // Podcast: strict, offline. Every rule here is an error.
+    if let Some(show) = &site.podcast {
+        rep.errors.extend(show.problems.iter().cloned());
+        // Problems that also left an episode out are errors here, not warnings too.
+        rep.warnings.retain(|w| !show.problems.contains(w));
+        let feed = show.feed_route.trim_start_matches('/');
+        match std::fs::read_to_string(tmp.join(feed)) {
+            Ok(xml) => {
+                if let Err(problems) = crate::podcast::validate_feed(&xml) {
+                    rep.errors.extend(problems.into_iter().map(|p| format!("{feed}: {p}")));
+                }
+            }
+            Err(e) => rep.errors.push(format!("{feed} was not written: {e}")),
+        }
+        if fixtures.is_none() {
+            if let Some(deployed) = crate::podcast::load_snapshot(&site.blog_dir, crate::podcast::DEPLOYED_SNAPSHOT) {
+                rep.errors.extend(crate::podcast::guid_changes(show, &deployed));
+            }
+            rep.notes.push(format!(
+                "podcast: once it is live, you can also check the feed online at {}",
+                crate::podcast::VALIDATORS.join(" or ")
+            ));
+        }
     }
     if site.cfg.description.trim().is_empty() {
         rep.warnings.push("blog.toml: description is empty; search engines and link previews use it for pages without a summary".into());
