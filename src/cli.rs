@@ -134,6 +134,13 @@ pub enum Cmd {
         /// The blog's folder (default: the folder you are in)
         blog: Option<PathBuf>,
     },
+    /// Turn the podcast on or off; on adds podcast/, the podcast templates and .gitignore lines for audio (no argument: show its state and any problems)
+    Podcast {
+        /// `on` or `off` (leave out to see the podcast's state)
+        state: Option<String>,
+        /// The blog's folder (default: the folder you are in)
+        blog: Option<PathBuf>,
+    },
     /// Regenerate the contract section of the blog's AGENTS.md (prints it without --write)
     AgentsMd {
         /// The blog's folder (default: the folder you are in)

@@ -29,6 +29,8 @@ pub struct Config {
     #[serde(default)]
     pub gallery: GalleryConfig,
     #[serde(default)]
+    pub podcast: PodcastConfig,
+    #[serde(default)]
     pub analytics: AnalyticsConfig,
     #[serde(default)]
     pub deploy: Option<DeployConfig>,
@@ -88,6 +90,109 @@ impl Default for GalleryConfig {
     fn default() -> Self {
         GalleryConfig { enabled: false, url: default_gallery_url() }
     }
+}
+
+/// The podcast: one show per blog, its episodes in `podcast/`. Off by default.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct PodcastConfig {
+    #[serde(default)]
+    pub enabled: bool,
+    /// Where the show page lives, e.g. "/podcast/". The feed is `<url>feed.xml`.
+    #[serde(default = "default_podcast_url")]
+    pub url: String,
+    /// Show title; default: the podcast/index.md title, else the site title.
+    #[serde(default)]
+    pub title: String,
+    #[serde(default)]
+    pub description: String,
+    #[serde(default)]
+    pub author: String,
+    #[serde(default)]
+    pub owner_name: String,
+    /// Public in the feed.
+    #[serde(default)]
+    pub owner_email: String,
+    /// Default: the site language.
+    #[serde(default)]
+    pub language: String,
+    /// An Apple Podcasts category, e.g. "Technology", with an optional subcategory.
+    #[serde(default)]
+    pub category: String,
+    #[serde(default)]
+    pub subcategory: String,
+    #[serde(default)]
+    pub explicit: bool,
+    /// "episodic" or "serial".
+    #[serde(default = "default_podcast_type", rename = "type")]
+    pub show_type: String,
+    /// Show art, a path in the blog folder (inside podcast/) or an https URL.
+    #[serde(default)]
+    pub image: String,
+    /// podcast:guid. Set once by `folderblog podcast on`; never change it.
+    #[serde(default)]
+    pub guid: String,
+    #[serde(default = "default_true")]
+    pub locked: bool,
+    #[serde(default)]
+    pub license: String,
+    /// "podcast" or "video"; default: video when every episode is an MP4.
+    #[serde(default)]
+    pub medium: String,
+    #[serde(default)]
+    pub funding: Vec<Funding>,
+    #[serde(default)]
+    pub persons: Vec<Person>,
+    /// Prefix enclosure URLs with https://op3.dev/e/ for open download stats.
+    #[serde(default)]
+    pub op3: bool,
+    /// Also list episodes in the main feed and on the home page (front matter `in_main_feed` overrides).
+    #[serde(default)]
+    pub in_main_feed: bool,
+    /// A Lightning address (name@domain) for listener tips, written as podcast:value.
+    #[serde(default)]
+    pub lightning_address: String,
+    /// Name shown for the Lightning recipient; default: the show author.
+    #[serde(default)]
+    pub lightning_name: String,
+    #[serde(default)]
+    pub storage: Option<StorageConfig>,
+}
+
+impl Default for PodcastConfig {
+    fn default() -> Self {
+        toml::from_str("").expect("defaults")
+    }
+}
+
+#[derive(Debug, Clone, Deserialize, serde::Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct Funding {
+    pub url: String,
+    #[serde(default)]
+    pub text: String,
+}
+
+#[derive(Debug, Clone, Deserialize, serde::Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct Person {
+    pub name: String,
+    #[serde(default)]
+    pub role: String,
+    #[serde(default)]
+    pub group: String,
+    #[serde(default)]
+    pub href: String,
+    #[serde(default)]
+    pub img: String,
+}
+
+/// Where episode audio is hosted. Only the public URL is needed to build the feed.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct StorageConfig {
+    /// Public base URL of the media host, e.g. "https://media.example.com" or "https://pub-xxxx.r2.dev".
+    pub public_url: String,
 }
 
 /// Optional, off by default: cookie-free GoatCounter page counts, added to built HTML only.
@@ -151,6 +256,12 @@ fn default_feed_limit() -> usize {
 fn default_gallery_url() -> String {
     "/gallery/".into()
 }
+fn default_podcast_url() -> String {
+    "/podcast/".into()
+}
+fn default_podcast_type() -> String {
+    "episodic".into()
+}
 fn default_branch() -> String {
     "gh-pages".into()
 }
@@ -187,6 +298,24 @@ impl Config {
             bail!("gallery.url must be a path like \"/gallery/\" (got {:?})", cfg.gallery.url);
         }
         cfg.gallery.url = format!("/{g}/");
+        let pu = cfg.podcast.url.trim().trim_matches('/');
+        if pu.is_empty() || pu.contains("..") || pu.contains(['?', '#']) {
+            bail!("podcast.url must be a path like \"/podcast/\" (got {:?})", cfg.podcast.url);
+        }
+        cfg.podcast.url = format!("/{pu}/");
+        if !matches!(cfg.podcast.show_type.as_str(), "episodic" | "serial") {
+            bail!("podcast.type must be \"episodic\" or \"serial\" (got {:?})", cfg.podcast.show_type);
+        }
+        if !matches!(cfg.podcast.medium.as_str(), "" | "podcast" | "video") {
+            bail!("podcast.medium must be \"podcast\" or \"video\" (got {:?})", cfg.podcast.medium);
+        }
+        if let Some(st) = &mut cfg.podcast.storage {
+            let u = st.public_url.trim().trim_end_matches('/');
+            if !u.starts_with("https://") || u.len() <= "https://".len() || u.contains(char::is_whitespace) {
+                bail!("podcast.storage.public_url must be an https:// URL like \"https://media.example.com\" (got {:?})", st.public_url);
+            }
+            st.public_url = u.to_string();
+        }
         let gc = cfg.analytics.goatcounter.trim().trim_end_matches('/');
         let host = gc.strip_prefix("https://").unwrap_or("");
         if !gc.is_empty()
@@ -246,6 +375,10 @@ limit = 20
 # [gallery]
 # enabled = true
 # url = "/gallery/"
+
+# Podcast: episodes in podcast/, a feed at /podcast/feed.xml. Or run `folderblog podcast on`.
+# [podcast]
+# enabled = true
 
 # Optional toolchain hooks, run with the blog folder as working directory.
 # Post-build hooks get $FOLDERBLOG_OUT (the fresh build directory) and may modify it.

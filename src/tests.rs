@@ -418,11 +418,22 @@ fn enable_gallery(dir: &Path) {
     fs::write(dir.join("blog.toml"), crate::gallery::set_enabled(&cfg, true).unwrap()).unwrap();
 }
 
+/// `folderblog podcast on`, plus the settings a real show needs.
+fn enable_podcast(dir: &Path) {
+    crate::podcast_cmd(dir, Some("on")).unwrap();
+    let cfg = fs::read_to_string(dir.join("blog.toml")).unwrap();
+    let mut doc: toml_edit::DocumentMut = cfg.parse().unwrap();
+    doc["podcast"]["category"] = toml_edit::value("Technology");
+    doc["podcast"]["owner_email"] = toml_edit::value("show@example.org");
+    fs::write(dir.join("blog.toml"), doc.to_string()).unwrap();
+}
+
 #[test]
 fn default_theme_passes_check_on_all_fixtures() {
     let (_t, dir) = new_default_blog();
     let (_t2, gdir) = new_default_blog();
     enable_gallery(&gdir);
+    enable_podcast(&gdir);
     for (dir, f) in crate::fixtures::names().into_iter().map(|f| (&dir, f)).chain(crate::fixtures::names().into_iter().map(|f| (&gdir, f))) {
         let rep = crate::check::check(dir, Some(f.clone())).unwrap();
         assert!(rep.errors.is_empty(), "fixture {f}: {:#?}", rep.errors);
@@ -454,6 +465,7 @@ fn eval(site: &Site, ctx: &std::collections::BTreeMap<String, minijinja::Value>,
 fn every_documented_field_exists() {
     let (_t, dir) = new_default_blog();
     enable_gallery(&dir);
+    enable_podcast(&dir);
     let site = Site::load(&dir, LoadOptions { fixtures: Some("stress".into()), ..Default::default() }).unwrap();
     let plan = site.plan().unwrap();
     let post_out = plan
@@ -465,7 +477,7 @@ fn every_documented_field_exists() {
     let mut ctx = ctx.clone();
     ctx.insert("pager".into(), minijinja::Value::from_serialize(std::collections::BTreeMap::<String, i32>::new()));
     for g in crate::contract::GLOBALS {
-        if ["pager", "page", "photo", "album"].contains(&g.name) {
+        if ["pager", "page", "photo", "album", "episode"].contains(&g.name) {
             continue;
         }
         assert_eq!(eval(&site, &ctx, &format!("{{{{ {} is defined }}}}", g.name)), "true", "global {}", g.name);
@@ -494,7 +506,16 @@ fn every_documented_field_exists() {
             assert_eq!(eval(&site, &ctx, &format!("{{{{ {base}.{} is defined }}}}", f.name)), "true", "{base}.{}", f.name);
         }
     }
-    for (name, global) in [("_gallery/photo.html", "photo"), ("_gallery/album.html", "album")] {
+    for f in crate::contract::PODCAST_FIELDS {
+        assert_eq!(eval(&site, &ctx, &format!("{{{{ podcast.{} is defined }}}}", f.name)), "true", "podcast.{}", f.name);
+    }
+    for f in crate::contract::EPISODE_FIELDS.iter().filter(|f| !f.name.starts_with('(')) {
+        assert_eq!(eval(&site, &ctx, &format!("{{{{ podcast.episodes[0].{} is defined }}}}", f.name)), "true", "episode.{}", f.name);
+    }
+    for f in crate::contract::ITEM_FIELDS {
+        assert_eq!(eval(&site, &ctx, &format!("{{{{ podcast.episodes[0].{} is defined }}}}", f.name)), "true", "episode.{}", f.name);
+    }
+    for (name, global) in [("_gallery/photo.html", "photo"), ("_gallery/album.html", "album"), ("_podcast/episode.html", "episode")] {
         let o = plan.outputs.iter().find(|o| matches!(&o.content, crate::render::Content::Render { template, .. } if template == name)).unwrap();
         let crate::render::Content::Render { ctx: c, .. } = &o.content else { unreachable!() };
         assert_eq!(eval(&site, c, &format!("{{{{ {global} is defined and item is defined }}}}")), "true", "{global}");
@@ -521,8 +542,16 @@ fn every_documented_field_exists() {
 #[test]
 fn every_documented_config_key_parses() {
     let value = |k: &crate::contract::Field| -> String {
-        if k.name == "analytics.goatcounter" {
+        if k.name == "analytics.goatcounter" || k.name == "podcast.storage.public_url" {
             "'https://stats.example.com'".into()
+        } else if k.name == "podcast.type" {
+            "'serial'".into()
+        } else if k.name == "podcast.medium" {
+            "'video'".into()
+        } else if k.name == "podcast.funding" {
+            "[{ url = 'https://x.com', text = 'Support' }]".into()
+        } else if k.name == "podcast.persons" {
+            "[{ name = 'Ada', role = 'host', href = 'https://x.com' }]".into()
         } else if k.ty.starts_with("list") {
             "['x']".into()
         } else if k.ty == "int" {
@@ -1178,4 +1207,389 @@ fn analytics_never_in_preview_drafts_or_fixtures() {
     let site = Site::load(&b.dir, LoadOptions { fixtures: Some("stress".into()), ..Default::default() }).unwrap();
     assert!(site.analytics_snippet().is_none() && site.analytics_snippet_for(true).is_none());
     assert!(b.site().analytics_snippet().is_some() && b.site().analytics_snippet_for(true).is_some());
+}
+
+// ---------- podcast ----------
+
+const MP3: &[u8] = include_bytes!("../fixtures/stress/podcast/2024-05-01-pilot/episode.mp3");
+const MP3_NO_XING: &[u8] = include_bytes!("../tests/media/cbr-no-xing.mp3");
+const MP4: &[u8] = include_bytes!("../fixtures/stress/podcast/2024-06-01-on-camera/episode.mp4");
+const COVER: &[u8] = include_bytes!("../fixtures/stress/podcast/cover.jpg");
+const GUID1: &str = "11111111-2222-4333-8444-555555555555";
+
+fn podcast_blog(extra: &str) -> Blog {
+    let b = Blog::new(&format!(
+        "[podcast]\nenabled = true\nguid = \"{}\"\ncategory = \"Technology\"\nauthor = \"Ada\"\nowner_email = \"ada@example.com\"\n{extra}\n[podcast.storage]\npublic_url = \"https://media.example.com/\"\n",
+        crate::podcast::feed_guid("https://example.com/podcast/feed.xml")
+    ));
+    b.write("theme/_podcast/index.html", "{{ podcast.title }}|{% for e in podcast.episodes %}{{ e.title }}={{ e.audio.url }};{% endfor %}");
+    b.write(
+        "theme/_podcast/episode.html",
+        "{{ episode.title }}|{{ episode.audio.url }}|{{ episode.audio.duration }}|{% for c in episode.chapters %}{{ c.start_hms }} {{ c.title }};{% endfor %}|{{ episode.transcript.url }}",
+    );
+    b.write("podcast/index.md", "# Ada Talks\n\nA show about things.\n");
+    write_bytes(&b.dir.join("podcast/cover.jpg"), COVER);
+    b
+}
+
+fn write_bytes(p: &Path, bytes: &[u8]) {
+    fs::create_dir_all(p.parent().unwrap()).unwrap();
+    fs::write(p, bytes).unwrap();
+}
+
+fn add_episode(b: &Blog, folder: &str, front: &str, file: &str, bytes: &[u8]) {
+    b.write(&format!("podcast/{folder}/index.md"), &format!("---\n{front}\n---\nShow notes with a [link](/about/).\n"));
+    write_bytes(&b.dir.join(format!("podcast/{folder}/{file}")), bytes);
+}
+
+fn check_errors(b: &Blog) -> Vec<String> {
+    crate::check::check(&b.dir, None).unwrap().errors
+}
+
+#[test]
+fn podcast_feed_has_every_tag_and_validates() {
+    let b = podcast_blog("lightning_address = \"ada@rizful.com\"\nfunding = [{ url = \"https://example.com/give\", text = \"Give\" }]\npersons = [{ name = \"Ada\", role = \"host\", href = \"https://example.com/ada\" }]\nlicense = \"cc-by-4.0\"\nsubcategory = \"\"\n");
+    add_episode(
+        &b,
+        "2024-05-01-pilot",
+        &format!("title: Pilot\nguid: \"{GUID1}\"\nseason: 1\nepisode: 1\nexplicit: true\nimage: art.jpg\npersons: [{{ name: Sam, role: guest }}]\nvalue: [{{ name: Sam, address: sam@getalby.com, split: 50 }}]"),
+        "episode.mp3",
+        MP3,
+    );
+    write_bytes(&b.dir.join("podcast/2024-05-01-pilot/art.jpg"), COVER);
+    b.write("podcast/2024-05-01-pilot/transcript.vtt", "WEBVTT\n\n00:00.000 --> 00:01.000\nHi\n");
+    b.write("podcast/2024-05-01-pilot/chapters.json", r#"{"version":"1.2.0","chapters":[{"startTime":0,"title":"Intro"},{"startTime":65,"title":"Talk"}]}"#);
+    b.write("pages/about.md", "# About\n");
+    b.build().unwrap();
+    let xml = b.read_out("podcast/feed.xml");
+    let sha8 = {
+        use sha2::Digest;
+        let h = sha2::Sha256::digest(MP3);
+        h.iter().take(4).map(|x| format!("{x:02x}")).collect::<String>()
+    };
+    for want in [
+        "xmlns:itunes=\"http://www.itunes.com/dtds/podcast-1.0.dtd\"",
+        "xmlns:podcast=\"https://podcastindex.org/namespace/1.0\"",
+        "<title>Ada Talks</title>",
+        "<link>https://example.com/podcast/</link>",
+        "<description>A show about things.</description>",
+        "<language>en</language>",
+        "<atom:link href=\"https://example.com/podcast/feed.xml\" rel=\"self\" type=\"application/rss+xml\"/>",
+        "<itunes:image href=\"https://example.com/podcast/cover.jpg\"/>",
+        "<itunes:category text=\"Technology\"/>",
+        "<itunes:explicit>false</itunes:explicit>",
+        "<itunes:author>Ada</itunes:author>",
+        "<itunes:owner><itunes:name>Ada</itunes:name><itunes:email>ada@example.com</itunes:email></itunes:owner>",
+        "<itunes:type>episodic</itunes:type>",
+        "<podcast:locked owner=\"ada@example.com\">yes</podcast:locked>",
+        "<podcast:medium>podcast</podcast:medium>",
+        "<podcast:funding url=\"https://example.com/give\">Give</podcast:funding>",
+        "<podcast:person role=\"host\" href=\"https://example.com/ada\">Ada</podcast:person>",
+        "<podcast:license>cc-by-4.0</podcast:license>",
+        "<podcast:value type=\"lightning\" method=\"lnaddress\">",
+        "<podcast:valueRecipient name=\"Ada\" type=\"lnaddress\" address=\"ada@rizful.com\" split=\"100\"/>",
+        "<generator>folderblog",
+        "<lastBuildDate>",
+        "<guid isPermaLink=\"false\">11111111-2222-4333-8444-555555555555</guid>",
+        "<link>https://example.com/podcast/pilot/</link>",
+        "<pubDate>",
+        "<content:encoded><![CDATA[<p>Show notes with a <a href=\"https://example.com/about/\">link</a>",
+        &format!("<enclosure url=\"https://media.example.com/example.com/pilot-{sha8}.mp3\" length=\"{}\" type=\"audio/mpeg\"/>", MP3.len()),
+        "<itunes:duration>3</itunes:duration>",
+        "<itunes:episodeType>full</itunes:episodeType>",
+        "<itunes:explicit>true</itunes:explicit>",
+        "<itunes:season>1</itunes:season>",
+        "<podcast:season>1</podcast:season>",
+        "<itunes:episode>1</itunes:episode>",
+        "<podcast:episode>1</podcast:episode>",
+        "<itunes:image href=\"https://example.com/podcast/pilot/art.jpg\"/>",
+        "<podcast:transcript url=\"https://example.com/podcast/pilot/transcript.vtt\" type=\"text/vtt\"/>",
+        "<podcast:chapters url=\"https://example.com/podcast/pilot/chapters.json\" type=\"application/json+chapters\"/>",
+        "<podcast:person role=\"guest\">Sam</podcast:person>",
+        "<podcast:valueRecipient name=\"Sam\" type=\"lnaddress\" address=\"sam@getalby.com\" split=\"50\"/>",
+    ] {
+        assert!(xml.contains(want), "missing {want}\n{xml}");
+    }
+    assert!(xml.contains(&format!("<podcast:guid>{}</podcast:guid>", crate::podcast::feed_guid("https://example.com/podcast/feed.xml"))));
+    assert_eq!(crate::podcast::validate_feed(&xml), Ok(1));
+    // Episode page: hosted audio, chapters, transcript beside it.
+    assert_eq!(
+        b.read_out("podcast/pilot/index.html"),
+        format!("Pilot|https://media.example.com/example.com/pilot-{sha8}.mp3|3|0:00 Intro;1:05 Talk;|/podcast/pilot/transcript.vtt")
+    );
+    assert!(b.read_out("podcast/pilot/chapters.json").contains("Intro"));
+    let rep = crate::check::check(&b.dir, None).unwrap();
+    assert!(rep.errors.is_empty(), "{:#?}", rep.errors);
+    // Episodes stay out of the main feed and the post list by default.
+    assert!(!b.read_out("feed.xml").contains("Pilot"));
+    assert_eq!(b.read_out("index.html"), "");
+}
+
+#[test]
+fn podcast_feed_validator_catches_problems() {
+    let bad = r#"<?xml version="1.0"?><rss><channel><title>T</title><link>http://x.com/</link><description>d</description>
+<itunes:explicit>yes</itunes:explicit><podcast:locked>maybe</podcast:locked>
+<item><title>A</title><guid>g</guid><pubDate>x</pubDate><enclosure url="http://m/x.mp3" length="0" type="audio/ogg"/><itunes:duration>0</itunes:duration></item>
+<item><title>B</title></item></channel></rss>"#;
+    let errs = crate::podcast::validate_feed(bad).unwrap_err().join("\n");
+    for want in [
+        "channel: <link> must be an https:// URL",
+        "<itunes:explicit> must be true or false",
+        "<podcast:locked> must be yes or no",
+        "episode 1: <enclosure url> must be an https:// URL",
+        "episode 1: <enclosure> has no length",
+        "type must be audio/mpeg or video/mp4",
+        "episode 1: <itunes:duration> must be a number of seconds above 0",
+        "episode 2: missing <enclosure>",
+        "episode 2: missing <guid>",
+        "channel: missing <language>",
+        "channel: missing <itunes:image>",
+        "channel: missing <podcast:guid>",
+        "channel: missing <atom:link>",
+    ] {
+        assert!(errs.contains(want), "missing {want:?} in\n{errs}");
+    }
+    assert!(crate::podcast::validate_feed("<rss><channel>").is_err());
+}
+
+#[test]
+fn media_duration_size_and_type_are_read_from_the_file() {
+    let tmp = tempfile::tempdir().unwrap();
+    let p = |n: &str, bytes: &[u8]| {
+        let path = tmp.path().join(n);
+        fs::write(&path, bytes).unwrap();
+        path
+    };
+    let mp3 = crate::podcast::inspect(&p("a.mp3", MP3)).unwrap();
+    assert_eq!((mp3.kind, mp3.bytes), (crate::podcast::MediaKind::Mp3, MP3.len() as u64));
+    assert!((mp3.duration - 3.0).abs() < 0.1, "{}", mp3.duration);
+    let cbr = crate::podcast::inspect(&p("b.mp3", MP3_NO_XING)).unwrap();
+    assert!((cbr.duration - 2.0).abs() < 0.15, "frames counted without a Xing header: {}", cbr.duration);
+    let mp4 = crate::podcast::inspect(&p("c.mp4", MP4)).unwrap();
+    assert_eq!(mp4.kind.mime(), "video/mp4");
+    assert!((mp4.duration - 2.0).abs() < 0.1, "{}", mp4.duration);
+    assert_eq!(mp4.sha256.len(), 64);
+    // The name must match what the file really is.
+    let e = crate::podcast::inspect(&p("lies.mp4", MP3)).unwrap_err().to_string();
+    assert!(e.contains("really an MP3"), "{e}");
+    let e = crate::podcast::inspect(&p("noise.mp3", b"definitely not audio")).unwrap_err().to_string();
+    assert!(e.contains("doesn't look like an MP3"), "{e}");
+    let e = crate::podcast::inspect(&p("x.m4a", MP4)).unwrap_err().to_string();
+    assert!(e.contains("export the episode as MP3"), "{e}");
+    assert!(MP3.len() + MP3_NO_XING.len() + MP4.len() < 50_000, "fixture audio stays small");
+}
+
+#[test]
+fn episode_guids_stay_stable_when_slug_date_or_base_url_change() {
+    let b = podcast_blog("");
+    add_episode(&b, "2024-05-01-pilot", &format!("guid: \"{GUID1}\""), "episode.mp3", MP3);
+    b.build().unwrap();
+    assert!(b.read_out("podcast/feed.xml").contains(GUID1));
+    // Rename the folder (new slug and date) and move the site.
+    fs::rename(b.dir.join("podcast/2024-05-01-pilot"), b.dir.join("podcast/2024-06-02-renamed")).unwrap();
+    let cfg = fs::read_to_string(b.dir.join("blog.toml")).unwrap().replace("base_url = \"https://example.com\"", "base_url = \"https://new.example.net\"");
+    fs::write(b.dir.join("blog.toml"), cfg).unwrap();
+    b.build().unwrap();
+    let xml = b.read_out("podcast/feed.xml");
+    assert!(xml.contains(&format!("<guid isPermaLink=\"false\">{GUID1}</guid>")), "{xml}");
+    assert!(xml.contains("https://new.example.net/podcast/renamed/"));
+    // The show's guid was pinned in blog.toml, so moving the site keeps it too.
+    assert!(xml.contains(&crate::podcast::feed_guid("https://example.com/podcast/feed.xml")));
+}
+
+#[test]
+fn episode_without_guid_gets_one_from_state_and_check_asks_for_it() {
+    let b = podcast_blog("");
+    add_episode(&b, "2024-05-01-pilot", "title: Pilot", "episode.mp3", MP3);
+    b.build().unwrap();
+    let first = b.read_out("podcast/feed.xml");
+    b.build().unwrap();
+    assert_eq!(first, b.read_out("podcast/feed.xml"), "the handed-out guid is kept");
+    let errs = check_errors(&b).join("\n");
+    assert!(errs.contains("no guid; add `guid: \""), "{errs}");
+}
+
+#[test]
+fn guid_changes_after_deploy_are_check_errors() {
+    let b = podcast_blog("");
+    add_episode(&b, "2024-05-01-pilot", &format!("guid: \"{GUID1}\""), "episode.mp3", MP3);
+    b.build().unwrap();
+    crate::podcast::mark_deployed(&b.dir);
+    assert!(check_errors(&b).is_empty());
+    b.write("podcast/2024-05-01-pilot/index.md", "---\nguid: \"other\"\n---\nx");
+    let errs = check_errors(&b).join("\n");
+    assert!(errs.contains("guid changed from 11111111"), "{errs}");
+    let cfg = fs::read_to_string(b.dir.join("blog.toml")).unwrap();
+    let old = crate::podcast::feed_guid("https://example.com/podcast/feed.xml");
+    fs::write(b.dir.join("blog.toml"), cfg.replace(&old, "new-show-guid")).unwrap();
+    let errs = check_errors(&b).join("\n");
+    assert!(errs.contains("podcast.guid changed"), "{errs}");
+}
+
+#[test]
+fn strict_podcast_rules_fail_with_clear_messages() {
+    let b = podcast_blog("category = \"Gadgets\"\nfunding = [{ url = \"http://example.com/give\" }]\nlightning_address = \"not-an-address\"");
+    // `category` appears twice in [podcast] now; drop the valid one so only the bad one is left.
+    let cfg = fs::read_to_string(b.dir.join("blog.toml")).unwrap().replacen("category = \"Technology\"\n", "", 1);
+    fs::write(b.dir.join("blog.toml"), cfg).unwrap();
+    add_episode(&b, "2024-05-01-a", &format!("guid: \"{GUID1}\"\nexplicit: \"yes\"\nseason: -1\nepisode_type: special"), "episode.mp3", MP3);
+    b.write("podcast/2024-05-01-a/chapters.json", r#"{"chapters":[]}"#);
+    b.write("podcast/2024-05-01-a/transcript.srt", "not a transcript");
+    add_episode(&b, "2024-05-02-b", &format!("guid: \"{GUID1}\""), "episode.mp3", MP3);
+    add_episode(&b, "2024-05-03-c", "guid: c", "episode.m4a", MP4);
+    add_episode(&b, "2024-05-04-d", "guid: d\nimage: small.png", "episode.mp3", MP3);
+    write_image(&b.dir.join("podcast/2024-05-04-d/small.png"), 300, 200);
+    write_image(&b.dir.join("podcast/cover.jpg"), 1400, 1000);
+    let errs = check_errors(&b).join("\n");
+    for want in [
+        "podcast.category \"Gadgets\" is not an Apple Podcasts category",
+        "podcast.funding url must be https://",
+        "podcast.lightning_address \"not-an-address\" is not a Lightning address",
+        "explicit must be true or false",
+        "season must be a whole number",
+        "episode_type must be full, trailer or bonus",
+        "chapters.json: \"version\" is required",
+        "chapters.json: \"chapters\" is empty",
+        "transcript.srt: cue 1: expected a number",
+        "is already used by podcast/2024-05-01-a",
+        "M4A/AAC audio isn't supported yet; export the episode as MP3",
+        "show art podcast/cover.jpg must be square (it is 1400×1000 px)",
+    ] {
+        assert!(errs.contains(want), "missing {want:?} in\n{errs}");
+    }
+    let errs_d = errs.lines().filter(|l| l.contains("2024-05-04-d")).collect::<Vec<_>>().join("\n");
+    assert!(errs_d.contains("must be square (it is 300×200 px)"), "{errs_d}");
+}
+
+#[test]
+fn https_is_enforced_for_podcasts() {
+    let b = podcast_blog("persons = [{ name = \"Ada\", href = \"http://example.com\" }]");
+    let cfg = fs::read_to_string(b.dir.join("blog.toml")).unwrap().replace("https://example.com\"\n[podcast]", "http://example.com\"\n[podcast]");
+    fs::write(b.dir.join("blog.toml"), cfg.replacen("base_url = \"https://example.com\"", "base_url = \"http://example.com\"", 1)).unwrap();
+    add_episode(&b, "2024-05-01-a", &format!("guid: \"{GUID1}\""), "episode.mp3", MP3);
+    let errs = check_errors(&b).join("\n");
+    assert!(errs.contains("base_url must be https:// for a podcast"), "{errs}");
+    assert!(errs.contains("links must be https://"), "{errs}");
+    assert!(errs.contains("<link> must be an https:// URL"), "{errs}");
+    let toml = "title='t'\nbase_url='https://x.com'\n[podcast.storage]\npublic_url='http://media.x.com'\n";
+    assert!(format!("{:#}", crate::config::Config::parse(toml).unwrap_err()).contains("must be an https:// URL"));
+}
+
+#[test]
+fn audio_is_never_published_and_podcast_on_ignores_it_in_git() {
+    let (_t, dir) = new_default_blog();
+    enable_podcast(&dir);
+    let gi = fs::read_to_string(dir.join(".gitignore")).unwrap();
+    for pat in ["podcast/**/*.mp3", "podcast/**/*.mp4", "podcast/**/*.wav"] {
+        assert!(gi.contains(pat), "{gi}");
+    }
+    assert!(gi.starts_with(".blog/\n"), "existing lines kept: {gi}");
+    crate::podcast_cmd(&dir, Some("on")).unwrap();
+    assert_eq!(fs::read_to_string(dir.join(".gitignore")).unwrap(), gi, "running it again adds nothing");
+    for t in crate::podcast::TEMPLATES {
+        assert!(dir.join("theme").join(t).is_file(), "{t}");
+    }
+    // A real build of the stress fixture's episodes (copied into the blog's own podcast/).
+    crate::util::copy_dir(&crate::site::fixture_root(&dir, "stress").unwrap().join("podcast"), &dir.join("podcast")).unwrap();
+    let mut doc: toml_edit::DocumentMut = fs::read_to_string(dir.join("blog.toml")).unwrap().parse().unwrap();
+    doc["podcast"]["storage"] = toml_edit::table();
+    doc["podcast"]["storage"]["public_url"] = toml_edit::value("https://media.example.org");
+    fs::write(dir.join("blog.toml"), doc.to_string()).unwrap();
+    for opts in [LoadOptions { persist_state: true, ..Default::default() }, LoadOptions { drafts: true, local_media: true, ..Default::default() }] {
+        let r = build::build(&dir, None, opts, false).unwrap();
+        let media: Vec<_> = walkdir::WalkDir::new(&r.out_dir).into_iter().filter_map(|e| e.ok()).filter(|e| crate::podcast::is_media(e.path())).map(|e| e.path().display().to_string()).collect();
+        assert!(media.is_empty(), "{media:?}");
+        assert!(r.out_dir.join("podcast/pilot/index.html").is_file());
+    }
+    let rep = crate::check::check(&dir, None).unwrap();
+    assert!(rep.errors.is_empty(), "{:#?}", rep.errors);
+}
+
+#[test]
+fn podcast_off_changes_no_output() {
+    let b = Blog::new("");
+    b.write("posts/2024-01-01-hello.md", "# Hello\n\nBody.\n");
+    b.write("theme/_layouts/base.html", "{% if podcast.enabled and podcast.count %}<a>{{ podcast.title }}</a>{% endif %}{{ posts | length }}");
+    b.build().unwrap();
+    let snapshot = |b: &Blog| -> Vec<(String, Vec<u8>)> {
+        let out = build::public_dir(&b.dir);
+        let mut v: Vec<(String, Vec<u8>)> = walkdir::WalkDir::new(&out)
+            .into_iter()
+            .filter_map(|e| e.ok())
+            .filter(|e| e.file_type().is_file())
+            .map(|e| (e.path().strip_prefix(&out).unwrap().display().to_string(), fs::read(e.path()).unwrap()))
+            .collect();
+        v.sort();
+        v
+    };
+    let before = snapshot(&b);
+    // A podcast/ folder with episodes changes nothing while the podcast is off.
+    add_episode(&b, "2024-05-01-a", &format!("guid: \"{GUID1}\"\nin_main_feed: true"), "episode.mp3", MP3);
+    b.build().unwrap();
+    assert_eq!(snapshot(&b), before);
+}
+
+#[test]
+fn episodes_need_a_media_host_except_in_preview() {
+    let b = podcast_blog("");
+    let cfg = fs::read_to_string(b.dir.join("blog.toml")).unwrap();
+    let cfg = cfg.split("[podcast.storage]").next().unwrap().to_string();
+    fs::write(b.dir.join("blog.toml"), cfg).unwrap();
+    add_episode(&b, "2024-05-01-pilot", &format!("guid: \"{GUID1}\""), "episode.mp3", MP3);
+    let r = build::build(&b.dir, None, LoadOptions { persist_state: true, ..Default::default() }, false).unwrap();
+    assert!(r.warnings.iter().any(|w| w.contains("nowhere to host the audio")), "{:?}", r.warnings);
+    assert!(!b.read_out("podcast/feed.xml").contains("<item>"));
+    assert!(!build::public_dir(&b.dir).join("podcast/pilot/index.html").exists());
+    assert!(check_errors(&b).iter().any(|e| e.contains("nowhere to host the audio")));
+    // Preview plays the local file.
+    let site = Site::load(&b.dir, LoadOptions { drafts: true, local_media: true, ..Default::default() }).unwrap();
+    let ep = &site.podcast.as_ref().unwrap().episodes[0];
+    assert_eq!(ep.media.as_ref().unwrap().url.as_deref(), Some("/__folderblog/media/podcast/2024-05-01-pilot/episode.mp3"));
+}
+
+#[test]
+fn draft_episodes_only_appear_in_preview() {
+    let b = podcast_blog("");
+    add_episode(&b, "2024-05-01-pilot", &format!("guid: \"{GUID1}\"\ndraft: true"), "episode.mp3", MP3);
+    b.write("podcast/2024-05-01-pilot/chapters.json", r#"{"version":"1.2.0","chapters":[{"startTime":0}]}"#);
+    b.build().unwrap();
+    let out = build::public_dir(&b.dir);
+    assert!(!out.join("podcast/pilot").exists(), "no page and no attached files");
+    assert!(!b.read_out("podcast/feed.xml").contains("<item>"));
+    let site = Site::load(&b.dir, LoadOptions { drafts: true, local_media: true, ..Default::default() }).unwrap();
+    assert_eq!(site.podcast.as_ref().unwrap().episodes.len(), 1);
+}
+
+#[test]
+fn episodes_can_also_be_listed_with_posts() {
+    let b = podcast_blog("");
+    b.write("posts/2024-05-02-post.md", "# A post\n");
+    add_episode(&b, "2024-05-01-pilot", &format!("guid: \"{GUID1}\"\ntitle: Pilot"), "episode.mp3", MP3);
+    add_episode(&b, "2024-05-03-two", "guid: two\ntitle: Two\nin_main_feed: true", "episode.mp4", MP4);
+    b.build().unwrap();
+    assert_eq!(b.read_out("index.html"), "Two;A post;");
+    let feed = b.read_out("feed.xml");
+    assert!(feed.contains("<title>Two</title>") && !feed.contains("<title>Pilot</title>"), "{feed}");
+    assert!(feed.contains("type=\"video/mp4\""), "{feed}");
+    crate::feed::validate_rss(&feed).unwrap();
+    // The show-wide switch lists them all.
+    let cfg = fs::read_to_string(b.dir.join("blog.toml")).unwrap().replace("[podcast]\n", "[podcast]\nin_main_feed = true\n");
+    fs::write(b.dir.join("blog.toml"), cfg).unwrap();
+    b.build().unwrap();
+    assert_eq!(b.read_out("index.html"), "Two;A post;Pilot;");
+    // Mixed MP3 and MP4: an audio show. Only MP4 episodes: a video show.
+    assert!(b.read_out("podcast/feed.xml").contains("<podcast:medium>podcast</podcast:medium>"));
+    fs::remove_dir_all(b.dir.join("podcast/2024-05-01-pilot")).unwrap();
+    b.build().unwrap();
+    assert!(b.read_out("podcast/feed.xml").contains("<podcast:medium>video</podcast:medium>"));
+}
+
+#[test]
+fn several_media_files_need_audio_in_front_matter() {
+    let b = podcast_blog("");
+    add_episode(&b, "2024-05-01-pilot", &format!("guid: \"{GUID1}\""), "episode.mp3", MP3);
+    write_bytes(&b.dir.join("podcast/2024-05-01-pilot/raw.mp3"), MP3_NO_XING);
+    assert!(check_errors(&b).join("\n").contains("2 media files in podcast/2024-05-01-pilot/; set `audio: <file>`"));
+    b.write("podcast/2024-05-01-pilot/index.md", &format!("---\nguid: \"{GUID1}\"\naudio: raw.mp3\n---\nx"));
+    assert!(check_errors(&b).is_empty(), "{:?}", check_errors(&b));
 }

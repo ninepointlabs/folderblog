@@ -92,6 +92,27 @@ show beta.test index.html | grep -o '<a href="/gallery/">[^<]*</a>' && echo "nav
 git --git-dir="$T/beta.test.git" ls-tree -r --name-only gh-pages | grep -E '^gallery/trip/calm\.(thumb\.)?jpg$'
 if git --git-dir="$T/beta.test.git" ls-tree -r --name-only gh-pages | grep -E '\.part$'; then echo "FAIL: partial download published"; exit 1; fi
 
+step "turn on alpha's podcast and drop an episode folder into it"
+"$BIN" podcast on "$ROOT/alpha.test" > /dev/null
+python3 - "$ROOT/alpha.test/blog.toml" <<'EOF2'
+import sys; p=sys.argv[1]; s=open(p).read()
+s=s.replace("\n[podcast]\nenabled = true\n","\n[podcast]\nenabled = true\ncategory = \"Technology\"\nowner_email = \"show@alpha.test\"\n",1)
+s+="\n[podcast.storage]\npublic_url = \"https://media.alpha.test\"\n"
+open(p,"w").write(s)
+EOF2
+cp fixtures/stress/podcast/cover.jpg "$ROOT/alpha.test/podcast/cover.jpg"
+EP="$ROOT/alpha.test/podcast/2024-05-01-pilot"
+mkdir -p "$EP"
+cp fixtures/stress/podcast/2024-05-01-pilot/episode.mp3 "$EP/episode.mp3.part"
+mv "$EP/episode.mp3.part" "$EP/episode.mp3"
+printf -- '---\ntitle: Pilot\nguid: "e2e-pilot-guid"\n---\nShow notes.\n' > "$EP/index.md"
+wait_for 30 "podcast feed to deploy" bash -c "git --git-dir='$T/alpha.test.git' show gh-pages:podcast/feed.xml | grep -q 'e2e-pilot-guid'"
+show alpha.test podcast/feed.xml | grep -o '<enclosure url="https://media.alpha.test/alpha.test/pilot-[0-9a-f]*.mp3" length="[0-9]*" type="audio/mpeg"/>'
+show alpha.test podcast/pilot/index.html | grep -o '<audio[^>]*>'
+if git --git-dir="$T/alpha.test.git" ls-tree -r --name-only gh-pages | grep -E '\.(mp3|mp4|part)$'; then echo "FAIL: audio published with the site"; exit 1; fi
+echo "audio not in the deployed site"
+"$BIN" check "$ROOT/alpha.test" | tail -1
+
 step "preview live reload"
 "$BIN" preview "$ROOT/beta.test" --port 4199 > "$T/preview.log" 2>&1 &
 PREVIEW_PID=$!

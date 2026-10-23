@@ -196,6 +196,7 @@ Here is what is inside your new blog folder:
 ```
 
 If you want a photo gallery too, see "Photo gallery" below. It adds a `gallery/` folder.
+If you want a podcast, see "Start a podcast" below. It adds a `podcast/` folder.
 
 ## Step 5: Write your first post
 
@@ -493,6 +494,121 @@ as the gallery has at least one photo.
 **Turning it off.** `folderblog gallery off` hides the gallery. Your photos stay safe in
 the folder.
 
+## Start a podcast
+
+A podcast is one more part of your blog. It gets its own page (`/podcast/`), a page for
+each episode, and its own feed that podcast apps (Apple Podcasts, Spotify, Pocket Casts,
+Fountain and the rest) can follow. You make the recordings; folderblog does the rest.
+
+Turn it on once:
+
+```sh
+folderblog podcast on ~/Blogs/myblog
+```
+
+This makes a `podcast/` folder and adds the podcast's design files to `theme/_podcast/`.
+It also tells git (if you use it) to leave audio files alone, because they are big and
+are kept somewhere else.
+
+```
+podcast/
+  index.md                        the show's name and a few sentences about it
+  cover.jpg                       the show's picture (square, 1400 to 3000 pixels)
+  2026-10-30-first-episode/       one folder for each episode
+    index.md                      the episode's notes
+    episode.mp3                   the recording
+    transcript.vtt                optional: what was said, word for word
+    chapters.json                 optional: the episode's chapters
+```
+
+**An episode.** Make a folder inside `podcast/`. Start its name with the date, like
+`2026-10-30-first-episode`. Put the recording inside, and an `index.md` with the notes:
+
+```markdown
+---
+title: "First episode"
+guid: "6f0e2c64-3b1b-4c9e-9d7a-1f6a2a8a6e01"
+season: 1
+episode: 1
+summary: "What this show is about."
+---
+What we talked about, and links to the things we mentioned.
+```
+
+- `guid` is the episode's permanent name tag in podcast apps. Write it once and **never
+  change it**. If you leave it out, `folderblog check` suggests one you can copy in.
+- `season` and `episode` are numbers. Both are optional.
+- `summary` is the short line apps show under the title.
+- `draft: true` keeps the episode to yourself until it's ready (you still see it in preview).
+- `explicit: true` marks an episode with grown-up language.
+- `episode_type` can be `trailer` or `bonus`. Normal episodes don't need it.
+- `persons` lists who is on the episode, like `[{ name: "Sam", role: guest }]`.
+- `in_main_feed: true` also lists this episode with your blog posts (see below).
+
+**Which recordings work.** MP3 for audio. MP4 for video podcasts. Other kinds (like WAV,
+FLAC or M4A) don't work yet; save the episode as MP3 first. folderblog works out how long
+each episode is and how big it is by itself. Very large files get a gentle warning, since
+they are slow for listeners.
+
+**Your recordings stay with you.** The audio never goes into your blog's website or into
+git. Your folder is the master copy. The website and the feed point at the copy on your
+audio host (see below).
+
+**The show's picture.** Put a square JPEG or PNG called `cover.jpg` (or `cover.png`) in
+`podcast/`. Podcast apps want it between 1400 and 3000 pixels on each side.
+
+**Show settings.** In `blog.toml`, under `[podcast]`:
+
+```toml
+[podcast]
+enabled = true
+category = "Technology"          # one of Apple's podcast categories
+author = "Your Name"
+owner_email = "you@example.com"  # podcast apps show this; use an address you don't mind sharing
+explicit = false
+```
+
+`folderblog check` tells you if the category isn't one Apple knows, and lists the ones it does.
+
+**Tips with Lightning (optional).** Listeners in apps like Fountain can send you small
+Bitcoin tips while they listen. To turn it on, add your Lightning address:
+
+```toml
+lightning_address = "you@rizful.com"
+```
+
+New to Lightning? [Rizful](https://rizful.com) is an easy way to get an address. Leave the
+line out and nothing changes.
+
+**Also on the blog's front page.** Episodes stay on `/podcast/` and in the podcast feed.
+To list them with your posts too (on the home page and in the blog's RSS feed), set
+`in_main_feed = true` under `[podcast]`, or `in_main_feed: true` on one episode.
+
+**Where the audio lives.** Podcast apps download each episode from an audio host. Tell
+folderblog its address under `[podcast.storage]`:
+
+```toml
+[podcast.storage]
+public_url = "https://media.example.com"
+```
+
+Each episode's file name on the host is shown by `folderblog podcast`. Until a host is set
+up, episodes are left out of your website and feed, so nobody ever gets a broken link.
+(Preview always plays the recording from your folder.)
+
+**Check before you share it.** `folderblog check` is strict about podcasts: it checks
+everything podcast apps need and explains anything missing in plain words. Once your
+show is online, you can also paste the feed address into
+[validator.truefans.fm](https://validator.truefans.fm) or
+[podba.se/validate](https://podba.se/validate/).
+
+**Telling podcast apps.** Your feed's address is `https://<your blog>/podcast/feed.xml`
+(`folderblog podcast` shows it). Submit that address once to Apple Podcasts Connect,
+Spotify for Creators and the Podcast Index; after that, new episodes show up by themselves.
+
+**Turning it off.** `folderblog podcast off` hides the podcast. Your episodes stay safe in
+the folder.
+
 ## See it before everyone else (preview)
 
 Want to look at your blog before it's online? Type:
@@ -608,6 +724,19 @@ limit = 20                                    # how many posts go in the RSS fee
 [gallery]
 enabled = true                                # the photo gallery is on
 url = "/gallery/"                             # where the gallery lives
+
+[podcast]
+enabled = true                                # the podcast is on
+category = "Technology"                       # an Apple Podcasts category (needed)
+author = "Your Name"                          # who makes the show
+owner_email = "you@example.com"               # shown to podcast apps
+# url = "/podcast/"                           # where the show lives
+# lightning_address = "you@rizful.com"        # optional tips with Lightning
+# in_main_feed = false                        # also list episodes with your posts
+# guid = "..."                                # set for you once; never change it
+
+[podcast.storage]
+public_url = "https://media.example.com"      # where podcast apps download episodes
 
 [deploy]
 type = "github"                               # github, git or command
@@ -858,6 +987,20 @@ folderblog gallery [on|off] [BLOG]
   `theme/_gallery/`. It never replaces design files you already have.
 - `off` turns it off. Your photos stay where they are.
 - Nothing after `gallery` just tells you whether it's on.
+
+### folderblog podcast
+
+Turns the podcast on or off, or shows the show, its episodes and anything that needs fixing.
+
+```sh
+folderblog podcast [on|off] [BLOG]
+```
+
+- `on` turns it on, makes the `podcast/` folder, adds the podcast's design files to
+  `theme/_podcast/` (never replacing ones you have), and adds audio files to `.gitignore`.
+  The first time, it also gives the show its permanent `guid` in `blog.toml`.
+- `off` turns it off. Your episodes stay where they are.
+- Nothing after `podcast` lists the episodes, the feed address and any problems.
 
 ### folderblog data
 

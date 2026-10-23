@@ -285,6 +285,7 @@ pub fn deploy(blog_dir: &Path, force: bool) -> Result<Outcome> {
         auth_problem: res.as_ref().err().and_then(crate::github::auth_problem).map(|p| p.to_string()),
     });
     if res.is_ok() {
+        crate::podcast::mark_deployed(blog_dir);
         st.deployed_hash = Some(hash);
         st.last_good_deploy = st.deploy.as_ref().map(|d| d.time.clone());
     }

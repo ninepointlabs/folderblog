@@ -13,6 +13,10 @@ pub const STATE_DIR: &str = ".blog";
 pub struct State {
     #[serde(default)]
     pub first_seen: BTreeMap<String, String>,
+    /// Podcast episodes without a front matter `guid`: the one handed out on first sight,
+    /// keyed by episode folder.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub podcast_guids: BTreeMap<String, String>,
     #[serde(skip)]
     dirty: bool,
     #[serde(skip)]
@@ -50,6 +54,17 @@ impl State {
         self.first_seen.insert(slug.to_string(), now.to_rfc3339());
         self.dirty = true;
         now
+    }
+
+    /// A random episode guid for `key`, handed out once and then kept.
+    pub fn podcast_guid(&mut self, key: &str) -> String {
+        if let Some(g) = self.podcast_guids.get(key) {
+            return g.clone();
+        }
+        let g = uuid::Uuid::new_v4().to_string();
+        self.podcast_guids.insert(key.to_string(), g.clone());
+        self.dirty = true;
+        g
     }
 
     pub fn save(&mut self) -> Result<()> {

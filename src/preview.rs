@@ -47,13 +47,16 @@ fn content_type(path: &str) -> &'static str {
         "txt" => "text/plain; charset=utf-8",
         "pdf" => "application/pdf",
         "mp4" => "video/mp4",
+        "mp3" => "audio/mpeg",
+        "vtt" => "text/vtt; charset=utf-8",
+        "srt" => "application/x-subrip",
         "webmanifest" => "application/manifest+json",
         _ => "application/octet-stream",
     }
 }
 
 fn build_preview(blog: &Path, out: &Path, fixtures: &Option<String>) -> Result<(), String> {
-    let opts = LoadOptions { drafts: true, fixtures: fixtures.clone(), persist_state: fixtures.is_none(), ..Default::default() };
+    let opts = LoadOptions { drafts: true, fixtures: fixtures.clone(), persist_state: fixtures.is_none(), local_media: true, ..Default::default() };
     crate::build::build(blog, Some(out), opts, false).map(|_| ()).map_err(|e| format!("{e:#}"))
 }
 
@@ -80,6 +83,7 @@ pub fn serve(blog: &Path, port: u16, fixtures: Option<String>) -> Result<()> {
         let shared = shared.clone();
         let blog = blog.clone();
         let out = out.clone();
+        let fixtures = fixtures.clone();
         std::thread::spawn(move || {
             let _watcher = watcher;
             loop {
@@ -111,6 +115,10 @@ pub fn serve(blog: &Path, port: u16, fixtures: Option<String>) -> Result<()> {
         });
     }
 
+    let media_root = match &fixtures {
+        Some(f) => blog.join(STATE_DIR).join("fixtures").join(f),
+        None => blog.clone(),
+    };
     let server = tiny_http::Server::http(("127.0.0.1", port)).map_err(|e| anyhow::anyhow!("cannot listen on port {port}: {e}"))?;
     // Sites under a subfolder (e.g. GitHub Pages project sites at /myblog/) are served
     // under the same path, so their links work exactly as they will live.
@@ -119,6 +127,11 @@ pub fn serve(blog: &Path, port: u16, fixtures: Option<String>) -> Result<()> {
     for req in server.incoming_requests() {
         let url = req.url().split(['?', '#']).next().unwrap_or("/").to_string();
         let url = percent_decode(&url);
+        if let Some(rel) = url.strip_prefix(crate::podcast::PREVIEW_MEDIA_PATH) {
+            let range = req.headers().iter().find(|h| h.field.equiv("Range")).map(|h| h.value.as_str().to_string());
+            let _ = req.respond(serve_media(&media_root, rel, range.as_deref()));
+            continue;
+        }
         let url = if base_path.is_empty() || url == VERSION_PATH {
             url
         } else if url == "/" || url == base_path {
@@ -144,6 +157,62 @@ pub fn serve(blog: &Path, port: u16, fixtures: Option<String>) -> Result<()> {
         let _ = req.respond(resp);
     }
     Ok(())
+}
+
+/// An episode file from the blog's `podcast/` folder, for the preview's player. Never part
+/// of any build. Supports single byte ranges, which browsers use to seek.
+fn serve_media(root: &Path, rel: &str, range: Option<&str>) -> tiny_http::Response<std::io::Cursor<Vec<u8>>> {
+    let not_found = || tiny_http::Response::from_data(b"not found".to_vec()).with_status_code(404);
+    let path = root.join(rel);
+    if rel.contains("..") || !rel.starts_with(&format!("{}/", crate::podcast::PODCAST_DIR)) || !crate::podcast::is_media(&path) || !path.is_file() {
+        return not_found();
+    }
+    let Ok(meta) = std::fs::metadata(&path) else { return not_found() };
+    let ct = match crate::podcast::media_kind(&path) {
+        Ok(k) => k.mime(),
+        Err(_) => "application/octet-stream",
+    };
+    let len = meta.len();
+    // Open-ended ranges get at most this much at a time; the browser asks again for more.
+    const CHUNK: u64 = 8 * 1024 * 1024;
+    let parsed = range.and_then(|r| r.strip_prefix("bytes=")).and_then(|r| {
+        let (a, b) = r.split_once('-')?;
+        let last = len.checked_sub(1)?;
+        let (start, end) = match (a.trim(), b.trim()) {
+            ("", n) => (len.saturating_sub(n.parse().ok()?), last),
+            (a, "") => {
+                let a: u64 = a.parse().ok()?;
+                (a, last.min(a.saturating_add(CHUNK - 1)))
+            }
+            (a, b) => (a.parse().ok()?, b.parse::<u64>().ok()?.min(last)),
+        };
+        (start <= end && start < len).then_some((start, end))
+    });
+    let read = |start: u64, n: u64| -> Option<Vec<u8>> {
+        use std::io::{Read, Seek, SeekFrom};
+        let mut f = std::fs::File::open(&path).ok()?;
+        f.seek(SeekFrom::Start(start)).ok()?;
+        let mut buf = vec![0u8; n as usize];
+        f.read_exact(&mut buf).ok()?;
+        Some(buf)
+    };
+    match parsed {
+        Some((start, end)) => {
+            let Some(bytes) = read(start, end - start + 1) else { return not_found() };
+            tiny_http::Response::from_data(bytes)
+                .with_status_code(206)
+                .with_header(header("Content-Type", ct))
+                .with_header(header("Accept-Ranges", "bytes"))
+                .with_header(header("Content-Range", &format!("bytes {start}-{end}/{len}")))
+        }
+        None => {
+            let Some(bytes) = read(0, len) else { return not_found() };
+            tiny_http::Response::from_data(bytes)
+                .with_header(header("Content-Type", ct))
+                .with_header(header("Accept-Ranges", "bytes"))
+                .with_header(header("Cache-Control", "no-store"))
+        }
+    }
 }
 
 fn header(k: &str, v: &str) -> tiny_http::Header {
@@ -227,4 +296,32 @@ fn percent_decode(s: &str) -> String {
         i += 1;
     }
     String::from_utf8_lossy(&out).into_owned()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn media_is_served_only_from_podcast_with_ranges() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path();
+        std::fs::create_dir_all(root.join("podcast/ep")).unwrap();
+        std::fs::write(root.join("podcast/ep/episode.mp3"), b"0123456789").unwrap();
+        std::fs::write(root.join("podcast/ep/index.md"), b"notes").unwrap();
+        std::fs::write(root.join("secret.mp3"), b"no").unwrap();
+        let body = |r: tiny_http::Response<std::io::Cursor<Vec<u8>>>| {
+            let code = r.status_code().0;
+            let mut v = vec![];
+            std::io::Read::read_to_end(&mut r.into_reader(), &mut v).unwrap();
+            (code, v)
+        };
+        assert_eq!(body(serve_media(root, "podcast/ep/episode.mp3", None)), (200, b"0123456789".to_vec()));
+        assert_eq!(body(serve_media(root, "podcast/ep/episode.mp3", Some("bytes=2-4"))), (206, b"234".to_vec()));
+        assert_eq!(body(serve_media(root, "podcast/ep/episode.mp3", Some("bytes=7-"))), (206, b"789".to_vec()));
+        assert_eq!(body(serve_media(root, "podcast/ep/episode.mp3", Some("bytes=-2"))), (206, b"89".to_vec()));
+        assert_eq!(serve_media(root, "podcast/ep/index.md", None).status_code().0, 404);
+        assert_eq!(serve_media(root, "secret.mp3", None).status_code().0, 404);
+        assert_eq!(serve_media(root, "podcast/../secret.mp3", None).status_code().0, 404);
+    }
 }

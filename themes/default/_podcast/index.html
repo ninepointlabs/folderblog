@@ -1,0 +1,32 @@
+{% extends "_layouts/base.html" %}
+{% block title %}{{ podcast.title }} · {{ site.title }}{% endblock %}
+{% block description %}{{ podcast.description }}{% endblock %}
+{% if podcast.image %}{% set share_image = dict(url=podcast.image, width=none, height=none) %}{% endif %}
+{% block head %}<link rel="alternate" type="application/rss+xml" title="{{ podcast.title }}" href="{{ podcast.feed_url }}">
+<style>{% include "_podcast/podcast.css" %}</style>
+{% endblock %}
+{% block main %}
+<div class="podcast">
+  <header class="podcast-head">
+    {% if podcast.art_url %}<img class="podcast-art" src="{{ podcast.art_url }}" width="160" height="160" alt="">{% endif %}
+    <div>
+      <h1>{{ podcast.title }}</h1>
+      {% if podcast.intro %}<div class="podcast-intro">{{ podcast.intro }}</div>{% elif podcast.description %}<p class="podcast-intro">{{ podcast.description }}</p>{% endif %}
+      <p class="podcast-subscribe"><a href="{{ podcast.feed_url }}">Podcast feed (RSS)</a>: paste this link into any podcast app to follow the show.</p>
+    </div>
+  </header>
+  {% if podcast.episodes %}
+  <ol class="episode-list">
+    {% for e in podcast.episodes %}
+    <li class="episode-summary">
+      <h2><a href="{{ e.url }}">{{ e.title }}</a></h2>
+      <p class="meta"><time datetime="{{ e.date }}">{{ e.date | date("%B %-d, %Y") }}</time>{% if e.audio %} · {{ e.audio.duration_hms }}{% endif %}{% if e.number %} · Episode {{ e.number }}{% endif %}{% if e.draft %} · <span class="draft">draft</span>{% endif %}</p>
+      {% if e.summary %}<p>{{ e.summary }}</p>{% endif %}
+    </li>
+    {% endfor %}
+  </ol>
+  {% else %}
+  <p class="empty">No episodes yet.</p>
+  {% endif %}
+</div>
+{% endblock %}
