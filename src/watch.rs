@@ -106,9 +106,9 @@ pub fn relevant(root: &Path, path: &Path) -> Option<PathBuf> {
     if inner.as_os_str().is_empty() {
         return None;
     }
-    // Engine state, VCS metadata, and the agent contract never trigger builds.
+    // Engine state, VCS metadata, the agent contract and the sample templates never trigger builds.
     let first = inner.components().next()?.as_os_str().to_string_lossy().to_string();
-    if first == STATE_DIR || first == ".git" || first == "AGENTS.md" || first == "node_modules" {
+    if first == STATE_DIR || first == ".git" || first == "AGENTS.md" || first == "node_modules" || first == "templates" {
         return None;
     }
     let name = path.file_name()?.to_string_lossy().to_string();

@@ -186,6 +186,12 @@ pub enum Cmd {
         #[arg(long, env = "FOLDERBLOG_ROOT")]
         root: Option<PathBuf>,
     },
+    /// Add sample files to templates/: a post and a podcast episode with every detail filled in
+    /// (only adds missing files; never changes ones that are there)
+    Templates {
+        /// The blog's folder (default: the folder you are in)
+        blog: Option<PathBuf>,
+    },
     /// Regenerate the contract section of the blog's AGENTS.md (prints it without --write)
     AgentsMd {
         /// The blog's folder (default: the folder you are in)

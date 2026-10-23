@@ -297,6 +297,7 @@ scripts and status bars.
   gallery/      pictures for the photo gallery (after `folderblog gallery on`)
   podcast/      the show and one folder per episode (after `folderblog podcast on`)
   theme/        all templates and styles; this decides what the site looks like
+  templates/    a sample post and podcast episode with every front matter field, to copy
   AGENTS.md     the theme contract for coding agents (generated)
   .blog/        folderblog's own state; ignore it
 ```
@@ -649,6 +650,7 @@ branch. Uncommitted edits on the branch still publish.
 | `folderblog podcast [on\|off\|setup\|publish] [BLOG]` | Turn the podcast on or off, set up audio hosting on Cloudflare R2, publish an episode (`--episode SLUG`), or list episodes and problems |
 | `folderblog mcp [--root DIR]` | MCP server on stdio for agents: draft, check and (after your yes) publish episodes |
 | `folderblog agents-md [BLOG] [--write]` | Refresh the blog's AGENTS.md |
+| `folderblog templates [BLOG]` | Add the sample post and episode to `templates/` (only missing files) |
 | `folderblog guide` | The step-by-step guide to everything ([docs/GUIDE.md](docs/GUIDE.md)) |
 | `folderblog man` | The same guide as a manual page (`man folderblog` once installed) |
 
