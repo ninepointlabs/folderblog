@@ -2080,3 +2080,78 @@ fn build_lock_makes_a_second_build_or_deploy_wait_its_turn() {
     // Free again afterwards.
     drop(crate::deploy::lock(&blog, || panic!("the lock should be free")).unwrap());
 }
+
+// ---------- sample templates/ ----------
+
+/// Template text ready to use: `draft: true` removed and, with `all`, every commented-out
+/// detail (`# key: value` and the indented lines under it) switched on.
+fn use_template(text: &str, all: bool, guid: Option<&str>) -> String {
+    let (front, body) = text.strip_prefix("---\n").unwrap().split_once("\n---\n").unwrap();
+    let mut out = vec![];
+    for line in front.lines() {
+        if line == "draft: true" {
+            continue;
+        }
+        if line.starts_with("# guid:") {
+            if let Some(g) = guid {
+                out.push(format!("guid: \"{g}\""));
+            }
+            continue;
+        }
+        let detail = line.strip_prefix("# ").filter(|l| {
+            l.starts_with("  - ") || l.split_once(": ").or(l.strip_suffix(':').map(|k| (k, ""))).is_some_and(|(k, _)| !k.is_empty() && k.chars().all(|c| c.is_ascii_lowercase() || c == '_'))
+        });
+        match detail {
+            Some(d) if all => out.push(d.to_string()),
+            _ => out.push(line.to_string()),
+        }
+    }
+    format!("---\n{}\n---\n{body}", out.join("\n"))
+}
+
+#[test]
+fn new_blogs_get_templates_and_the_command_only_adds_missing_ones() {
+    let (_t, dir) = new_default_blog();
+    assert!(dir.join("templates/post.md").is_file());
+    assert!(dir.join("templates/podcast-episode/index.md").is_file());
+    fs::write(dir.join("templates/post.md"), "mine").unwrap();
+    fs::remove_file(dir.join("templates/podcast-episode/index.md")).unwrap();
+    assert_eq!(crate::fixtures::write_templates(&dir).unwrap(), vec!["templates/podcast-episode/index.md"]);
+    assert_eq!(fs::read_to_string(dir.join("templates/post.md")).unwrap(), "mine", "never overwrites");
+    assert!(crate::fixtures::write_templates(&dir).unwrap().is_empty());
+    // Templates are not content and don't make the watcher rebuild.
+    assert!(crate::watch::relevant(dir.parent().unwrap(), &dir.join("templates/post.md")).is_none());
+    let rep = crate::check::check(&dir, None).unwrap();
+    assert!(rep.errors.is_empty(), "{:#?}", rep.errors);
+}
+
+#[test]
+fn templates_are_valid_as_written_and_with_every_detail_switched_on() {
+    let tpl = |p: &str| crate::fixtures::BLOG_TEMPLATES.get_file(p).unwrap().contents_utf8().unwrap().to_string();
+    for all in [false, true] {
+        let b = podcast_blog("lightning_address = \"ada@example.com\"");
+        b.write("theme/_layouts/post-wide.html", "{{ item.title }}");
+        b.write("posts/walk.md", &use_template(&tpl("post.md"), all, None));
+        write_bytes(&b.dir.join("posts/cover.jpg"), COVER);
+        let ep = "podcast/2026-03-21-first-episode";
+        b.write(&format!("{ep}/index.md"), &use_template(&tpl("podcast-episode/index.md"), all, Some(GUID1)));
+        write_bytes(&b.dir.join(format!("{ep}/episode.mp3")), MP3_NO_XING);
+        write_bytes(&b.dir.join(format!("{ep}/art.jpg")), COVER);
+        for f in ["transcript.vtt", "chapters.json"] {
+            fs::copy(format!("fixtures/stress/podcast/2024-05-01-pilot/{f}"), b.dir.join(format!("{ep}/{f}"))).unwrap();
+        }
+        assert_eq!(check_errors(&b), Vec::<String>::new(), "all = {all}");
+        let site = b.site();
+        let post = site.posts.iter().find(|p| p.title == "A walk in the woods").expect("post published");
+        assert_eq!(post.tags, ["walking", "nature"]);
+        let show = site.podcast.as_ref().unwrap();
+        let e = show.episodes.iter().find(|e| e.item.title == "First episode").expect("episode published");
+        assert_eq!((e.guid.as_str(), e.season, e.number, e.persons.len()), (GUID1, Some(1), Some(1), 2));
+        if all {
+            assert_eq!(post.slug, "woods-walk");
+            assert!(post.image.is_some());
+            assert!(e.in_main_feed && e.image.is_some() && e.transcript.is_some() && e.chapters.is_some());
+            assert_eq!(e.value.len(), 2);
+        }
+    }
+}

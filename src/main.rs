@@ -330,6 +330,17 @@ fn run(cli: Cli) -> Result<i32> {
             mcp::serve(mcp::Ctx { root: default_root(root), config_dir: github::config_dir() })?;
             Ok(0)
         }
+        Cmd::Templates { blog } => {
+            let blog = blog_dir(blog)?;
+            let wrote = fixtures::write_templates(&blog)?;
+            if wrote.is_empty() {
+                println!("{} already has every template; nothing changed", blog.join("templates").display());
+            }
+            for w in wrote {
+                println!("wrote {}", blog.join(w).display());
+            }
+            Ok(0)
+        }
         Cmd::AgentsMd { blog, write } => {
             let blog = blog_dir(blog)?;
             let path = blog.join("AGENTS.md");
@@ -498,6 +509,7 @@ pub fn new_blog(dir: &Path, github: Option<(&str, &str, Option<&str>)>) -> Resul
         std::fs::create_dir_all(dir.join(d))?;
     }
     fixtures::DEFAULT_THEME.extract(dir.join("theme"))?;
+    fixtures::write_templates(dir)?;
     std::fs::write(dir.join(config::CONFIG_FILE), config::default_config(&name, github))?;
     std::fs::write(dir.join("AGENTS.md"), contract::update(None))?;
     std::fs::write(dir.join(".gitignore"), ".blog/\n")?;

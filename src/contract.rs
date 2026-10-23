@@ -638,6 +638,8 @@ group with `posts | groupby("year")`.
 - `gallery/` — pictures for the photo gallery, when it is on (see **The photo gallery**).
 - `podcast/` — the show and its episode folders, when the podcast is on (see **The podcast**).
 - `data/` — JSON/TOML/YAML exposed as `data`.
+- `templates/` — sample `post.md` and `podcast-episode/index.md` with every front matter key, for
+  people to copy. Never published; `folderblog templates` adds missing ones. Keep them as they are.
 - Front matter is optional (YAML between `---` or TOML between `+++`). Known keys:
   `title`, `date`, `tags`, `slug`, `layout`, `draft`, `excerpt`/`summary`, `updated`,
   `url` (override the output URL), `weight` (page order), `image` (share image). Everything else passes through

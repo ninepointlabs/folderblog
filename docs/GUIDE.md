@@ -191,6 +191,7 @@ Here is what is inside your new blog folder:
   static/       files to put online exactly as they are
   data/         lists and facts that your design can use
   theme/        the design: how your blog looks
+  templates/    a sample post and podcast episode to copy (see below)
   AGENTS.md     notes for AI coding helpers (made for you)
   .blog/        folderblog's own scratch space; leave it alone
 ```
@@ -306,6 +307,12 @@ Here is every detail folderblog knows about:
 | `image` | The picture shown when someone shares the post, like `cover.jpg` (beside the post) or a web address |
 
 You can add **any other detail you like**, such as `mood: happy`. A design can show it.
+
+**A ready-made post to copy.** Your blog's `templates/` folder has `post.md`, a post with
+every one of these details filled in and a note on each. Copy it into `posts/`, rename it,
+change what you need and delete the lines you don't. It starts with `draft: true`, so
+delete that line when the post is ready. (Older blogs can get the folder with
+`folderblog templates`.)
 
 You can write front matter in another style called TOML, between `+++` lines, if you
 prefer:
@@ -544,6 +551,11 @@ What we talked about, and links to the things we mentioned.
 - `episode_type` can be `trailer` or `bonus`. Normal episodes don't need it.
 - `persons` lists who is on the episode, like `[{ name: "Sam", role: guest }]`.
 - `in_main_feed: true` also lists this episode with your blog posts (see below).
+
+**A ready-made episode to copy.** `templates/podcast-episode/` in your blog folder has an
+`index.md` with every episode detail and a note on each, including the rarer ones
+(episode art, Lightning tips for one episode, which file to use). Copy the folder into
+`podcast/`, name it after the episode, put the MP3 beside `index.md`, and fill it in.
 
 **Which recordings work.** MP3 for audio. MP4 for video podcasts. Other kinds (like WAV,
 FLAC or M4A) don't work yet; save the episode as MP3 first. folderblog works out how long
@@ -1125,6 +1137,18 @@ folderblog agents-md [BLOG] [--write]
   is kept.
 
 Run it after you update folderblog, so the notes match the new version.
+
+### folderblog templates
+
+Adds the sample files to the blog's `templates/` folder: `post.md` and
+`podcast-episode/index.md`, with every detail filled in. New blogs already have them.
+
+```sh
+folderblog templates [BLOG]
+```
+
+It only adds files that are missing. If you changed a template, it stays as you left it.
+The `templates/` folder is never put on your website.
 
 ### folderblog watch
 
