@@ -219,6 +219,12 @@ pub fn watch(root: &Path) -> Result<()> {
 
     // Initial pass: build everything so a restart catches up on changes made while stopped.
     for blog in list_blogs(&root) {
+        // After folderblog is updated, add what the new version brings (templates, AGENTS.md).
+        let name = blog.file_name().unwrap_or_default().to_string_lossy().to_string();
+        match crate::upgrade::upgrade(&blog) {
+            Ok(changed) => changed.iter().for_each(|c| log(format!("{name}: {c}"))),
+            Err(e) => log(format!("{name}: could not bring the blog up to date: {e:#}")),
+        }
         let now = Instant::now();
         pending.insert(blog, Pending { first: now - MAX_WAIT, last: now - QUIET });
     }

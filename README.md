@@ -281,6 +281,12 @@ different folder, run `systemctl --user edit folderblog` and add
 When the service starts it builds every blog once, so changes made while it was stopped
 are published. Failed publishes (offline, login expired…) are retried every 5 minutes.
 
+**After updating folderblog**, restart the service (`systemctl --user restart folderblog`).
+On its first start with a new version it brings each blog up to date: it adds sample files
+the blog doesn't have yet (like `templates/`) and refreshes the generated part of
+`AGENTS.md`, and logs what it changed. It never turns a feature on and never changes
+`theme/`, `blog.toml` or your posts. A sample file you delete is not put back.
+
 `folderblog status` exits with code 1 when anything is failing, so it also works in
 scripts and status bars.
 
