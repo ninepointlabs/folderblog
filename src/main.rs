@@ -14,13 +14,17 @@ mod markdown;
 mod podcast;
 mod preview;
 mod render;
+mod setup;
 mod site;
 mod state;
 mod status;
+mod storage;
 mod templates;
 mod util;
 mod watch;
 
+#[cfg(test)]
+mod mock_s3;
 #[cfg(test)]
 mod tests;
 
@@ -242,14 +246,73 @@ fn run(cli: Cli) -> Result<i32> {
             Ok(0)
         }
         Cmd::Gallery { state, blog } => gallery_cmd(&blog_dir(blog)?, state.as_deref()),
-        Cmd::Podcast { state, blog } => {
+        Cmd::Podcast {
+            state,
+            blog,
+            account_id,
+            bucket,
+            public_url,
+            access_key_id,
+            secret_from_stdin,
+            token_from_stdin,
+            domain,
+            zone_id,
+            jurisdiction,
+            lightning_address,
+            show,
+            no_browser,
+        } => {
             // `folderblog podcast BLOG` shows that blog's podcast.
             let (state, blog) = match state {
-                Some(s) if blog.is_none() && !matches!(s.as_str(), "on" | "off") => (None, Some(PathBuf::from(s))),
-                Some(s) if !matches!(s.as_str(), "on" | "off") => bail!("unknown podcast action {s:?}; use `on` or `off`"),
+                Some(s) if blog.is_none() && !matches!(s.as_str(), "on" | "off" | "setup") => (None, Some(PathBuf::from(s))),
+                Some(s) if !matches!(s.as_str(), "on" | "off" | "setup") => bail!("unknown podcast action {s:?}; use `on`, `off` or `setup`"),
                 s => (s, blog),
             };
-            podcast_cmd(&blog_dir(blog)?, state.as_deref())
+            let blog = blog_dir(blog)?;
+            let opts = setup::Opts {
+                account_id,
+                bucket,
+                public_url,
+                access_key_id,
+                jurisdiction,
+                domain,
+                zone_id,
+                lightning_address,
+                secret_from_stdin,
+                token_from_stdin,
+                show,
+                no_browser,
+            };
+            if state.as_deref() != Some("setup") {
+                return podcast_cmd(&blog, state.as_deref());
+            }
+            if !show && !config::Config::load(&blog)?.podcast.enabled {
+                podcast_cmd(&blog, Some("on"))?;
+                println!();
+            }
+            let stdin = std::io::stdin();
+            let mut input = stdin.lock();
+            let mut out = std::io::stdout();
+            let mut hidden = |prompt: &str| -> Result<String> { Ok(rpassword::prompt_password(format!("{prompt} "))?.trim().to_string()) };
+            let mut open = |url: &str| {
+                let _ = std::process::Command::new("xdg-open")
+                    .arg(url)
+                    .stdout(std::process::Stdio::null())
+                    .stderr(std::process::Stdio::null())
+                    .spawn();
+            };
+            let mut io = setup::Io {
+                input: &mut input,
+                out: &mut out,
+                hidden: &mut hidden,
+                open: &mut open,
+                cf_api: std::env::var("FOLDERBLOG_CLOUDFLARE_API").unwrap_or_else(|_| setup::CF_API.to_string()),
+                config_dir: github::config_dir(),
+                r2_endpoint: std::env::var("FOLDERBLOG_R2_ENDPOINT").ok(),
+                public_wait: std::time::Duration::from_secs(60),
+                public_get: &storage::public_get,
+            };
+            setup::run(&blog, opts, &mut io)
         }
         Cmd::AgentsMd { blog, write } => {
             let blog = blog_dir(blog)?;
@@ -327,7 +390,7 @@ fn podcast_cmd(blog: &Path, state: Option<&str>) -> Result<i32> {
         println!("feed: {}", podcast::feed_url(&cfg));
         match &cfg.podcast.storage {
             Some(s) => println!("audio is hosted at {}", s.public_url),
-            None => println!("audio hosting: not set up yet, so episodes stay out of the feed (set [podcast.storage] public_url)"),
+            None => println!("audio hosting: not set up yet, so episodes stay out of the feed; run `folderblog podcast setup`"),
         }
         let site = site::Site::load(blog, LoadOptions { drafts: true, ..Default::default() })?;
         let show = site.podcast.as_ref().context("podcast did not load")?;

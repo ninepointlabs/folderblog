@@ -584,17 +584,52 @@ line out and nothing changes.
 To list them with your posts too (on the home page and in the blog's RSS feed), set
 `in_main_feed = true` under `[podcast]`, or `in_main_feed: true` on one episode.
 
-**Where the audio lives.** Podcast apps download each episode from an audio host. Tell
-folderblog its address under `[podcast.storage]`:
+**Where the audio lives.** Podcast apps download each episode from an audio host.
+folderblog sets one up for you on Cloudflare R2, and uploads each episode when your blog
+publishes. Run:
 
-```toml
-[podcast.storage]
-public_url = "https://media.example.com"
+```sh
+folderblog podcast setup ~/Blogs/myblog
 ```
 
-Each episode's file name on the host is shown by `folderblog podcast`. Until a host is set
-up, episodes are left out of your website and feed, so nobody ever gets a broken link.
-(Preview always plays the recording from your folder.)
+It walks you through everything, one step at a time, and opens each page in your browser:
+
+1. **A Cloudflare account.** If you don't have one, it opens the sign-up page. Make an
+   account and click the link in the email Cloudflare sends you.
+2. **Turning on R2.** R2 is free for up to 10 GB stored each month, and downloads are
+   always free. (After that it costs about 1.5 cents per GB each month.) Cloudflare does
+   ask for a card or PayPal to turn R2 on, even on the free plan.
+3. **Connecting folderblog.** The quick way (recommended): folderblog opens a ready-made
+   form for one API token. Click *Continue to summary*, then *Create Token*, and paste the
+   token when asked (it won't show as you paste). folderblog then makes the bucket and the
+   public address for you. That token can manage every R2 bucket in your account. If you'd
+   rather it couldn't, choose the careful way: you make the bucket and a key for just that
+   bucket yourself, and paste the Account ID, Access Key ID, Secret and public address.
+4. **Tips (optional).** It asks for a Lightning address, if you want one.
+5. **A check.** It uploads a tiny test file, finds it again, downloads it from the public
+   address and removes it, telling you in plain words what worked. If something doesn't,
+   it says what usually fixes it, and nothing is saved, so you can simply run it again.
+
+**Your own address, or r2.dev.** You can start with a free `r2.dev` address. It works, but
+it is rate-limited and Cloudflare says it isn't meant for production. Your own address,
+like `media.yourblog.com`, is better for a real show. It needs that domain to be on
+Cloudflare in the same account (if your domain is somewhere else, such as Porkbun, that
+means moving its nameservers to Cloudflare first). You can switch later by running setup
+again: podcast apps keep following the show, because its `guid` never changes.
+
+**Where your keys go.** The key folderblog needs is saved in
+`~/.config/folderblog/storage/<bucket>.json`, which only you can read. It is never put in
+`blog.toml`, your blog folder or git. `folderblog podcast setup --show` shows what is set
+up, with only the last four letters of the key.
+
+**When an upload fails.** If an episode can't be uploaded (you're offline, say), folderblog
+holds back the whole publish, so the feed never points at a missing file. It tries again
+by itself every few minutes, and `folderblog status` says why it's waiting. Episodes are
+uploaded once; saving other files doesn't upload them again.
+
+**Using another host.** If you upload the files yourself, set only
+`public_url = "https://..."` under `[podcast.storage]`; `folderblog podcast` lists each
+episode's file name on the host, and publishing waits until each file is there.
 
 **Check before you share it.** `folderblog check` is strict about podcasts: it checks
 everything podcast apps need and explains anything missing in plain words. Once your
@@ -736,6 +771,9 @@ owner_email = "you@example.com"               # shown to podcast apps
 # guid = "..."                                # set for you once; never change it
 
 [podcast.storage]
+type = "r2"                                   # set by `folderblog podcast setup`
+account_id = "..."                            # your Cloudflare Account ID
+bucket = "myblog-podcast"                     # the R2 bucket
 public_url = "https://media.example.com"      # where podcast apps download episodes
 
 [deploy]
@@ -1001,6 +1039,24 @@ folderblog podcast [on|off] [BLOG]
   The first time, it also gives the show its permanent `guid` in `blog.toml`.
 - `off` turns it off. Your episodes stay where they are.
 - Nothing after `podcast` lists the episodes, the feed address and any problems.
+- `setup` connects audio hosting on Cloudflare R2, step by step (see "Start a podcast").
+
+For scripts and AI helpers, `setup` also runs without questions. Secrets are only ever
+read from stdin, never typed after the command, so they don't end up in your shell history:
+
+```sh
+# Quick: folderblog makes the bucket (a Cloudflare API token on stdin).
+folderblog podcast setup --account-id ID --token-from-stdin [--bucket NAME] < token.txt
+#   --domain media.example.com --zone-id ZONE   connects your own address instead of r2.dev
+# Careful: you made the bucket and its key yourself.
+folderblog podcast setup --account-id ID --bucket NAME --public-url https://... \
+  --access-key-id KEY --secret-from-stdin < secret.txt
+```
+
+- `--jurisdiction eu` (or `fedramp`) is for buckets made in that jurisdiction.
+- `--lightning-address you@rizful.com` adds tips.
+- `--no-browser` prints the links instead of opening them.
+- `--show` shows the current settings, with only the last four letters of the key.
 
 ### folderblog data
 

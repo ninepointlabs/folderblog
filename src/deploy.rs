@@ -245,6 +245,11 @@ pub enum Outcome {
 
 /// Deploy the last good build. Skips if identical to what was last deployed, unless forced.
 pub fn deploy(blog_dir: &Path, force: bool) -> Result<Outcome> {
+    deploy_with(blog_dir, force, &crate::github::config_dir())
+}
+
+/// `deploy`, reading saved storage keys from `config_dir`.
+pub fn deploy_with(blog_dir: &Path, force: bool, config_dir: &Path) -> Result<Outcome> {
     let cfg = Config::load(blog_dir)?;
     let Some(dcfg) = &cfg.deploy else { return Ok(Outcome::NoTarget) };
     if let Some(want) = &cfg.deploy_branch
@@ -274,7 +279,14 @@ pub fn deploy(blog_dir: &Path, force: bool) -> Result<Outcome> {
     if !force && st.deployed_hash.as_deref() == Some(hash.as_str()) && st.deploy.as_ref().is_some_and(|d| d.ok) {
         return Ok(Outcome::Unchanged);
     }
-    let res = target.deploy(blog_dir, &out);
+    // Episode audio goes up first; if it can't, the site waits so the feed never points at missing files.
+    let res = crate::storage::sync_for_deploy(blog_dir, &cfg, config_dir).and_then(|media| {
+        let d = target.deploy(blog_dir, &out)?;
+        Ok(match media {
+            Some(m) if !m.is_empty() => format!("{m}, {d}"),
+            _ => d,
+        })
+    });
     st.deploy = Some(DeployStatus {
         time: crate::util::now_rfc3339(),
         ok: res.is_ok(),

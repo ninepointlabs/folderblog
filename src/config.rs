@@ -187,10 +187,28 @@ pub struct Person {
     pub img: String,
 }
 
-/// Where episode audio is hosted. Only the public URL is needed to build the feed.
+/// Where episode audio is hosted. Only the public URL is needed to build the feed; the
+/// rest lets deploys upload it. Keys live in `~/.config/folderblog/storage/<bucket>.json`.
 #[derive(Debug, Clone, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct StorageConfig {
+    /// "r2" (Cloudflare R2), "s3" (any S3-compatible host at `endpoint`), or empty: you
+    /// upload the files yourself and deploys only check they are there.
+    #[serde(default, rename = "type")]
+    pub kind: String,
+    #[serde(default)]
+    pub account_id: String,
+    #[serde(default)]
+    pub bucket: String,
+    /// R2 only: "eu" or "fedramp" for buckets created in a jurisdiction.
+    #[serde(default)]
+    pub jurisdiction: String,
+    /// s3 only: the API endpoint, e.g. "https://s3.us-west-004.backblazeb2.com".
+    #[serde(default)]
+    pub endpoint: String,
+    /// Signing region (default "auto", which R2 uses).
+    #[serde(default)]
+    pub region: String,
     /// Public base URL of the media host, e.g. "https://media.example.com" or "https://pub-xxxx.r2.dev".
     pub public_url: String,
 }
@@ -315,6 +333,24 @@ impl Config {
                 bail!("podcast.storage.public_url must be an https:// URL like \"https://media.example.com\" (got {:?})", st.public_url);
             }
             st.public_url = u.to_string();
+            let bucket_ok = |b: &str| (3..=63).contains(&b.len()) && b.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-');
+            match st.kind.as_str() {
+                "" => {}
+                "r2" => {
+                    if st.account_id.trim().is_empty() || !bucket_ok(&st.bucket) {
+                        bail!("podcast.storage type \"r2\" needs account_id and bucket (3-63 lowercase letters, digits or -); run `folderblog podcast setup`");
+                    }
+                    if !matches!(st.jurisdiction.as_str(), "" | "default" | "eu" | "fedramp") {
+                        bail!("podcast.storage.jurisdiction must be \"eu\" or \"fedramp\" when set (got {:?})", st.jurisdiction);
+                    }
+                }
+                "s3" => {
+                    if !(st.endpoint.starts_with("https://") || st.endpoint.starts_with("http://")) || st.bucket.trim().is_empty() {
+                        bail!("podcast.storage type \"s3\" needs endpoint (an http(s) URL) and bucket");
+                    }
+                }
+                other => bail!("podcast.storage.type must be \"r2\" or \"s3\" (got {other:?})"),
+            }
         }
         let gc = cfg.analytics.goatcounter.trim().trim_end_matches('/');
         let host = gc.strip_prefix("https://").unwrap_or("");
