@@ -2,7 +2,7 @@
 {% block title %}{{ episode.title }} · {{ podcast.title }}{% endblock %}
 {% set og_type = "article" %}
 {% block description %}{{ episode.summary }}{% endblock %}
-{% block head %}<link rel="alternate" type="application/rss+xml" title="{{ podcast.title }}" href="{{ podcast.feed_url }}">
+{% block head %}<link rel="alternate" type="application/rss+xml" title="{{ podcast.title ~ ' (Podcast)' if podcast.title == site.title else podcast.title }}" href="{{ podcast.feed_url }}">
 <style>{% include "_podcast/podcast.css" %}</style>
 {% endblock %}
 {% block main %}

@@ -2252,3 +2252,27 @@ fn upgrade_adds_what_a_new_version_brings_once_and_never_touches_the_rest() {
     assert!(crate::upgrade::upgrade(&dir).unwrap().is_empty());
     assert!(!dir.join("templates/post.md").exists());
 }
+
+#[test]
+fn default_podcast_page_has_a_subscribe_block_and_a_distinct_feed_title() {
+    let (_t, dir) = new_default_blog();
+    enable_podcast(&dir);
+    let alternates = |html: &str| -> Vec<String> {
+        html.lines().filter(|l| l.contains("rel=\"alternate\"")).map(|l| l.split("title=\"").nth(1).unwrap().split('"').next().unwrap().to_string()).collect()
+    };
+    let site_title = crate::config::Config::load(&dir).unwrap().title;
+    let r = build::build(&dir, None, LoadOptions { persist_state: true, ..Default::default() }, false).unwrap();
+    let html = fs::read_to_string(r.out_dir.join("podcast/index.html")).unwrap();
+    assert!(html.contains(">Subscribe</h2>"), "{html}");
+    assert!(html.contains("<code class=\"podcast-feed-url\">https://example.org/podcast/feed.xml</code>"), "{html}");
+    assert!(html.contains("Paste this link into any podcast app"), "{html}");
+    // A show named after the blog gets the suffix; one with its own name keeps it.
+    for (name, want) in [(site_title.clone(), format!("{site_title} (Podcast)")), ("Night Shift Radio".to_string(), "Night Shift Radio".to_string())] {
+        let mut doc: toml_edit::DocumentMut = fs::read_to_string(dir.join("blog.toml")).unwrap().parse().unwrap();
+        doc["podcast"]["title"] = toml_edit::value(name);
+        fs::write(dir.join("blog.toml"), doc.to_string()).unwrap();
+        let r = build::build(&dir, None, LoadOptions { persist_state: true, ..Default::default() }, false).unwrap();
+        let titles = alternates(&fs::read_to_string(r.out_dir.join("podcast/index.html")).unwrap());
+        assert_eq!(titles, vec![site_title.clone(), want], "{titles:?}");
+    }
+}
