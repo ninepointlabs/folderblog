@@ -2055,3 +2055,28 @@ fn mcp_publish_refuses_problems_and_respects_mcp_publish_false() {
     assert_eq!(r["published"], false);
     assert!(r["command"].as_str().unwrap().starts_with("folderblog podcast publish --episode pilot "), "{r}");
 }
+
+#[test]
+fn build_lock_makes_a_second_build_or_deploy_wait_its_turn() {
+    use std::sync::atomic::{AtomicBool, Ordering};
+    use std::sync::{Arc, mpsc};
+    let tmp = tempfile::tempdir().unwrap();
+    let blog = tmp.path().to_path_buf();
+    let first = crate::deploy::lock(&blog, || panic!("nobody else has the lock yet")).unwrap();
+    let waited = Arc::new(AtomicBool::new(false));
+    let (tx, rx) = mpsc::channel();
+    let (b, w) = (blog.clone(), waited.clone());
+    let second = std::thread::spawn(move || {
+        let l = crate::deploy::lock(&b, || w.store(true, Ordering::SeqCst)).unwrap();
+        tx.send(()).unwrap();
+        drop(l);
+    });
+    // While the first holder keeps it, the second can't get in.
+    assert!(rx.recv_timeout(std::time::Duration::from_millis(300)).is_err());
+    assert!(waited.load(Ordering::SeqCst));
+    drop(first);
+    rx.recv_timeout(std::time::Duration::from_secs(5)).expect("the second gets the lock once the first lets go");
+    second.join().unwrap();
+    // Free again afterwards.
+    drop(crate::deploy::lock(&blog, || panic!("the lock should be free")).unwrap());
+}

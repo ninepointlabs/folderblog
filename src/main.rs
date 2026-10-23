@@ -190,6 +190,7 @@ fn run(cli: Cli) -> Result<i32> {
         }
         Cmd::Deploy { blog, force } => {
             let blog = blog_dir(blog)?;
+            let _lock = deploy::lock(&blog, || eprintln!("waiting for a build or deploy that is already running"))?;
             build::build(&blog, None, LoadOptions { persist_state: true, ..Default::default() }, true)?;
             match deploy::deploy(&blog, force)? {
                 deploy::Outcome::NoTarget => bail!("no [deploy] section in blog.toml"),

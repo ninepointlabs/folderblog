@@ -618,6 +618,8 @@ pub fn publish(ctx: &Ctx, blog: &Path, slug: &str) -> Result<Json> {
     let ep = site.podcast.as_ref().and_then(|s| s.episodes.iter().find(|e| e.folder == folder)).ok_or_else(|| undo(anyhow!("the episode did not make it into the build")))?;
     let enclosure = ep.media.as_ref().and_then(|m| m.enclosure.clone());
     let page = crate::templates::absolute(&cfg.base_url, &site.base_path, &crate::templates::prefix_base(&site.base_path, &ep.item.route));
+    // Waits for a watcher build/deploy already in progress, and holds the watcher off until this one is done.
+    let _lock = crate::deploy::lock(blog, || eprintln!("waiting for a build or deploy that is already running"))?;
     crate::build::build(blog, None, LoadOptions { persist_state: true, ..Default::default() }, true)?;
     let detail = match crate::deploy::deploy_with(blog, false, &ctx.config_dir) {
         Ok(crate::deploy::Outcome::Deployed(d)) => d,

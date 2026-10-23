@@ -134,6 +134,13 @@ pub fn relevant(root: &Path, path: &Path) -> Option<PathBuf> {
 pub fn build_and_deploy(blog: &Path) -> bool {
     let name = blog.file_name().unwrap().to_string_lossy().to_string();
     let was_healthy = crate::status::healthy(&crate::status::load(blog));
+    let _lock = match crate::deploy::lock(blog, || log(format!("{name}: waiting for a publish that is already running"))) {
+        Ok(l) => l,
+        Err(e) => {
+            log(format!("{name}: build skipped: {e:#}"));
+            return false;
+        }
+    };
     let started = Instant::now();
     let opts = LoadOptions { persist_state: true, ..Default::default() };
     let built = std::panic::catch_unwind(|| crate::build::build(blog, None, opts, true));
