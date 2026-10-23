@@ -21,6 +21,7 @@ mod state;
 mod status;
 mod storage;
 mod templates;
+mod upgrade;
 mod util;
 mod watch;
 
@@ -517,6 +518,8 @@ pub fn new_blog(dir: &Path, github: Option<(&str, &str, Option<&str>)>) -> Resul
         dir.join("drafts").join("welcome.md"),
         "# Welcome\n\nFiles in `drafts/` only show up in `folderblog preview`. Move a file into `posts/` to publish it.\n\nNo front matter needed: the first heading is the title, the filename is the slug, and the date is when folderblog first sees the post.\n",
     )?;
+    // Record that this blog is current, so a sample deleted later is not put back.
+    upgrade::upgrade(dir)?;
     Ok(())
 }
 

@@ -82,6 +82,12 @@ folderblog --version
 
 It should say `folderblog 0.2.6` (or a newer number).
 
+**Updating later.** Install the new package the same way, then restart the helper:
+`systemctl --user restart folderblog`. When it starts, it brings your blogs up to date by
+itself: it adds new sample files (like the `templates/` folder) and refreshes `AGENTS.md`.
+It never turns anything on and never changes your design, your settings or your posts. If
+you delete a sample file, it stays deleted.
+
 folderblog also needs a program called `git`. Most computers already have it. To pop up
 little messages on your screen, it uses `notify-send`, which most computers also have.
 
@@ -1136,7 +1142,8 @@ folderblog agents-md [BLOG] [--write]
 - `--write` saves them into `AGENTS.md`. Anything you wrote outside the generated part
   is kept.
 
-Run it after you update folderblog, so the notes match the new version.
+The helper does this by itself when it starts after an update. Run it yourself if
+you don't use the helper.
 
 ### folderblog templates
 
@@ -1148,6 +1155,7 @@ folderblog templates [BLOG]
 ```
 
 It only adds files that are missing. If you changed a template, it stays as you left it.
+The helper also adds missing templates by itself the first time it starts after an update.
 The `templates/` folder is never put on your website.
 
 ### folderblog watch
