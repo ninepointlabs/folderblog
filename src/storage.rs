@@ -14,11 +14,30 @@ use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
+/// What a HEAD found. Any 2xx means the file is there, even when the reply has no size.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Stored {
+    Missing,
+    Size(u64),
+    /// There, but the reply carried no Content-Length.
+    UnknownSize,
+}
+
+impl Stored {
+    fn from_head(status: u16, content_length: Option<&str>) -> Stored {
+        match (status, content_length.and_then(|l| l.trim().parse().ok())) {
+            (200..=299, Some(n)) => Stored::Size(n),
+            (200..=299, None) => Stored::UnknownSize,
+            _ => Stored::Missing,
+        }
+    }
+}
+
 pub trait MediaStore {
     /// Upload `file` as `key`. Large files go up in parts.
     fn put(&self, key: &str, file: &Path, content_type: &str) -> Result<()>;
-    /// The stored size of `key`, or None if it isn't there.
-    fn head(&self, key: &str) -> Result<Option<u64>>;
+    /// Whether `key` is stored, and its size when the host says.
+    fn head(&self, key: &str) -> Result<Stored>;
     fn delete(&self, key: &str) -> Result<()>;
     /// Where listeners download `key` from.
     fn public_url(&self, key: &str) -> String;
@@ -274,6 +293,9 @@ impl S3Store {
         let url = if q.is_empty() { format!("{}{uri}", self.endpoint) } else { format!("{}{uri}?{}", self.endpoint, q.join("&")) };
         // ureq sets Host itself.
         headers.retain(|(k, _)| k != "host");
+        // Unsigned. ureq asks for gzip by default; R2 then gzips text and its HEAD
+        // replies lose Content-Length, so a file that is there looks size-less.
+        headers.push(("accept-encoding".to_string(), "identity".to_string()));
         (url, headers)
     }
 
@@ -399,11 +421,10 @@ impl MediaStore for S3Store {
         if size > self.multipart_threshold { self.put_multipart(key, file, content_type) } else { self.put_single(key, file, content_type, size) }
     }
 
-    fn head(&self, key: &str) -> Result<Option<u64>> {
+    fn head(&self, key: &str) -> Result<Stored> {
         let (status, hdrs, _) = self.send("HEAD", key, &[], vec![], &[])?;
         match status {
-            200..=299 => Ok(hdrs.get("content-length").and_then(|l| l.parse().ok())),
-            404 => Ok(None),
+            200..=299 | 404 => Ok(Stored::from_head(status, hdrs.get("content-length").map(String::as_str))),
             s => Err(s3_error(&format!("checking {key}"), s, "", &self.bucket)),
         }
     }
@@ -421,12 +442,13 @@ impl MediaStore for S3Store {
     }
 }
 
-/// The size a public URL reports (HEAD), or None if it isn't there.
-pub fn public_head(url: &str) -> Result<Option<u64>> {
-    let resp = agent(Duration::from_secs(30)).head(url).call().map_err(|e| anyhow!("could not reach {url}: {e}"))?;
+/// Whether a public URL is there (HEAD), and its size when the reply says.
+pub fn public_head(url: &str) -> Result<Stored> {
+    // identity: a compressed reply would drop Content-Length (see `S3Store::request`).
+    let resp = agent(Duration::from_secs(30)).head(url).header("accept-encoding", "identity").call().map_err(|e| anyhow!("could not reach {url}: {e}"))?;
     match resp.status().as_u16() {
-        200..=299 => Ok(resp.headers().get("content-length").and_then(|v| v.to_str().ok()).and_then(|v| v.parse().ok())),
-        404 | 403 => Ok(None),
+        s @ 200..=299 => Ok(Stored::from_head(s, resp.headers().get("content-length").and_then(|v| v.to_str().ok()))),
+        404 | 403 => Ok(Stored::Missing),
         s => bail!("{url} answered HTTP {s}"),
     }
 }
@@ -483,9 +505,11 @@ pub fn sync_media(blog_dir: &Path, cfg: &StorageConfig, media: &[crate::podcast:
         for m in media {
             let url = format!("{}/{}", cfg.public_url, uri_encode(&m.key, true));
             match public_head(&url).map_err(held)? {
-                Some(n) if n == m.bytes => {}
-                Some(n) => return Err(held(anyhow!("{url} is {n} bytes but {} is {} bytes; upload it again", m.folder, m.bytes))),
-                None => return Err(held(anyhow!("{} is not at {url} yet; upload it there, or run `folderblog podcast setup` so folderblog does it", m.folder))),
+                // There, but the host didn't say how big; nothing to compare.
+                Stored::Size(n) if n == m.bytes => {}
+                Stored::UnknownSize => {}
+                Stored::Size(n) => return Err(held(anyhow!("{url} is {n} bytes but {} is {} bytes; upload it again", m.folder, m.bytes))),
+                Stored::Missing => return Err(held(anyhow!("{} is not at {url} yet; upload it there, or run `folderblog podcast setup` so folderblog does it", m.folder))),
             }
         }
         return Ok(format!("{} episode file(s) checked", media.len()));
@@ -508,12 +532,16 @@ pub fn sync_media(blog_dir: &Path, cfg: &StorageConfig, media: &[crate::podcast:
     }
     for m in media {
         match store.head(&m.key).map_err(held)? {
-            Some(n) if n == m.bytes => {}
+            Stored::Size(n) if n == m.bytes => {}
+            Stored::UnknownSize => {}
             got => {
                 // Forget it, so the next deploy uploads it again.
                 manifest.uploaded.remove(&m.key);
                 save_manifest(blog_dir, &manifest)?;
-                let what = got.map(|n| format!("is {n} bytes, not {}", m.bytes)).unwrap_or_else(|| "is missing".into());
+                let what = match got {
+                    Stored::Size(n) => format!("is {n} bytes, not {}", m.bytes),
+                    _ => "is missing".into(),
+                };
                 return Err(held(anyhow!("{} on the media host {what}; it will be uploaded again", m.key)));
             }
         }

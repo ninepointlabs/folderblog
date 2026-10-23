@@ -1719,10 +1719,10 @@ fn large_files_go_up_in_signed_parts() {
     assert!(reqs.iter().any(|r| r.method == "POST" && r.query == "uploads"));
     assert!(reqs.iter().any(|r| r.method == "POST" && r.query.contains("uploadId=upload-1")));
     assert_eq!(mock.state.lock().unwrap().objects["show/b/big.mp3"], data);
-    assert_eq!(store.head("b/big.mp3").unwrap(), Some(10_000));
-    assert_eq!(store.head("nope.mp3").unwrap(), None);
+    assert_eq!(store.head("b/big.mp3").unwrap(), crate::storage::Stored::Size(10_000));
+    assert_eq!(store.head("nope.mp3").unwrap(), crate::storage::Stored::Missing);
     store.delete("b/big.mp3").unwrap();
-    assert_eq!(store.head("b/big.mp3").unwrap(), None);
+    assert_eq!(store.head("b/big.mp3").unwrap(), crate::storage::Stored::Missing);
     assert!(mock.state.lock().unwrap().bad_signatures.is_empty());
     // A failed part aborts the upload.
     mock.state.lock().unwrap().fail_puts = Some(503);
@@ -1734,6 +1734,58 @@ fn large_files_go_up_in_signed_parts() {
     mock.state.lock().unwrap().fail_puts = None;
     let e = bad.put("x.mp3", &f, "audio/mpeg").unwrap_err().to_string();
     assert!(e.contains("Access Key ID or Secret is wrong"), "{e}");
+}
+
+#[test]
+fn heads_ask_for_an_uncompressed_reply_so_the_size_comes_back() {
+    // The mock answers like R2: a client that accepts gzip gets no Content-Length.
+    use crate::storage::{MediaStore, Stored};
+    let mock = crate::mock_s3::Mock::start(mock_creds());
+    let store = crate::storage::S3Store::new(&mock.url, "show", "auto", mock_creds(), "https://media.example.com");
+    store.put_bytes("check.txt", b"folderblog storage check 2026-10-23T12:00:00Z\n", "text/plain").unwrap();
+    assert_eq!(store.head("check.txt").unwrap(), Stored::Size(46));
+    let heads: Vec<_> = mock.requests().into_iter().filter(|r| r.method == "HEAD").collect();
+    assert!(heads.iter().all(|r| r.headers.get("accept-encoding").map(String::as_str) == Some("identity")), "{heads:#?}");
+    let public = crate::storage::public_head(&format!("{}/pub/check.txt", mock.url)).unwrap();
+    assert_eq!(public, Stored::Size(46));
+}
+
+#[test]
+fn a_head_reply_without_a_length_still_means_the_file_is_there() {
+    use crate::storage::{MediaStore, Stored};
+    let mock = crate::mock_s3::Mock::start(mock_creds());
+    mock.state.lock().unwrap().head_without_length = true;
+    let store = crate::storage::S3Store::new(&mock.url, "show", "auto", mock_creds(), &format!("https://{}", crate::mock_s3::R2_DEV));
+    store.put_bytes("check.txt", b"hello\n", "text/plain").unwrap();
+    assert_eq!(store.head("check.txt").unwrap(), Stored::UnknownSize);
+    assert_eq!(store.head("nope.txt").unwrap(), Stored::Missing);
+    assert_eq!(crate::storage::public_head(&format!("{}/pub/check.txt", mock.url)).unwrap(), Stored::UnknownSize);
+    assert_eq!(crate::storage::public_head(&format!("{}/pub/nope.txt", mock.url)).unwrap(), Stored::Missing);
+    store.delete("check.txt").unwrap();
+
+    // Setup's check passes: "find it again" no longer reads a missing size as a missing file.
+    let conf = tempfile::tempdir().unwrap();
+    let url = mock.url.clone();
+    let public_get = move |u: &str| -> anyhow::Result<(u16, String)> {
+        let path = u.strip_prefix(&format!("https://{}/", crate::mock_s3::R2_DEV)).unwrap();
+        let mut r = ureq::get(&format!("{url}/pub/{path}")).config().http_status_as_error(false).build().call()?;
+        Ok((r.status().as_u16(), r.body_mut().read_to_string()?))
+    };
+    let mut input = std::io::Cursor::new(vec![]);
+    let mut out = vec![];
+    let mut hidden = |_: &str| -> anyhow::Result<String> { panic!("no prompts") };
+    let mut opened = |u: &str| panic!("opened {u}");
+    let mut io = setup_io(&mut input, &mut out, &mut hidden, &mut opened, &mock, conf.path(), &public_get);
+    crate::setup::verify(&mut io, &store).unwrap_or_else(|e| panic!("{e:#}\n{}", String::from_utf8_lossy(&out)));
+    let text = String::from_utf8_lossy(&out).to_string();
+    assert!(text.contains("ok    find it again") && !text.contains("FAIL"), "{text}");
+
+    // And a deploy's skip-if-uploaded check doesn't hold the site or re-upload.
+    let (b, conf) = storage_blog(&mock);
+    add_episode(&b, "2024-05-01-pilot", &format!("guid: \"{GUID1}\""), "episode.mp3", MP3);
+    deploy(&b, conf.path()).unwrap();
+    deploy(&b, conf.path()).unwrap();
+    assert_eq!(mock.requests().iter().filter(|r| r.method == "PUT" && r.path.ends_with(".mp3")).count(), 1);
 }
 
 fn setup_io<'a>(

@@ -26,6 +26,8 @@ pub struct State {
     pub fail_puts: Option<u16>,
     /// Store objects shorter than sent (to test HEAD checks).
     pub truncate: bool,
+    /// Answer every HEAD as compressed, so the client never sees a Content-Length.
+    pub head_without_length: bool,
     parts: HashMap<String, BTreeMap<u32, Vec<u8>>>,
     pub buckets: Vec<String>,
     pub bad_signatures: Vec<String>,
@@ -100,6 +102,17 @@ fn json(v: serde_json::Value) -> (u16, Vec<u8>, Vec<(String, String)>) {
     (200, v.to_string().into_bytes(), vec![("Content-Type".into(), "application/json".into())])
 }
 
+/// Like R2: a client that accepts gzip gets a compressed reply, and ureq then drops
+/// Content-Length (along with Content-Encoding) before the caller sees it.
+fn head_headers(s: &State, req: &BTreeMap<String, String>, len: usize) -> Vec<(String, String)> {
+    // tiny_http drops HEAD bodies but keeps the length header we give.
+    let mut h = vec![("Content-Length".to_string(), len.to_string())];
+    if s.head_without_length || req.get("accept-encoding").is_some_and(|e| e.contains("gzip")) {
+        h.push(("Content-Encoding".into(), "gzip".into()));
+    }
+    h
+}
+
 fn handle(
     st: &Arc<Mutex<State>>,
     creds: &Credentials,
@@ -142,7 +155,8 @@ fn handle(
         let s = st.lock().unwrap();
         let found = s.objects.iter().find(|(k, _)| k.split_once('/').map(|(_, rest)| rest) == Some(&decode(key)));
         return match found {
-            Some((_, v)) if method == "GET" || method == "HEAD" => (200, v.clone(), vec![]),
+            Some((_, v)) if method == "HEAD" => (200, vec![], head_headers(&s, headers, v.len())),
+            Some((_, v)) if method == "GET" => (200, v.clone(), vec![]),
             _ => (404, vec![], vec![]),
         };
     }
@@ -201,8 +215,7 @@ fn handle(
             (204, vec![], vec![])
         }
         "HEAD" => match s.objects.get(&key) {
-            // tiny_http drops HEAD bodies but keeps the length header we give.
-            Some(v) => (200, vec![], vec![("Content-Length".into(), v.len().to_string())]),
+            Some(v) => (200, vec![], head_headers(&s, headers, v.len())),
             None => (404, vec![], vec![]),
         },
         "GET" => match s.objects.get(&key) {

@@ -4,7 +4,7 @@
 //! agents. Secrets are only ever read with no echo or from stdin, never from arguments.
 
 use crate::config::Config;
-use crate::storage::{self, Credentials, MediaStore, S3Store};
+use crate::storage::{self, Credentials, MediaStore, S3Store, Stored};
 use anyhow::{Context, Result, anyhow, bail};
 use serde_json::{Value as Json, json};
 use std::io::{BufRead, Write};
@@ -167,9 +167,11 @@ pub fn verify(io: &mut Io, store: &S3Store) -> Result<()> {
     let eu = "If the bucket was made in the EU, run setup again with --jurisdiction eu.";
     step(io, "upload a tiny test file", store.put_bytes(&key, body.as_bytes(), "text/plain"), eu)?;
     let head = store.head(&key).and_then(|h| match h {
-        Some(n) if n == body.len() as u64 => Ok(()),
-        Some(n) => Err(anyhow!("it is {n} bytes, expected {}", body.len())),
-        None => Err(anyhow!("it isn't there")),
+        Stored::Size(n) if n == body.len() as u64 => Ok(()),
+        Stored::Size(n) => Err(anyhow!("it is {n} bytes, expected {}", body.len())),
+        // It's there; the public download below checks the contents.
+        Stored::UnknownSize => Ok(()),
+        Stored::Missing => Err(anyhow!("it isn't there")),
     });
     if let Err(e) = step(io, "find it again", head, eu) {
         let _ = store.delete(&key);
