@@ -157,6 +157,10 @@ pub struct PodcastConfig {
     pub lightning_name: String,
     #[serde(default)]
     pub storage: Option<StorageConfig>,
+    /// Let an agent publish through `folderblog mcp` (after the user says yes). When false,
+    /// `publish_episode` returns the command for the user to run instead.
+    #[serde(default = "default_true")]
+    pub mcp_publish: bool,
 }
 
 impl Default for PodcastConfig {

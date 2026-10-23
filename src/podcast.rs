@@ -442,6 +442,31 @@ pub fn parse_chapters(text: &str) -> Result<Vec<Chapter>, Vec<String>> {
     if errs.is_empty() { Ok(out) } else { Err(errs) }
 }
 
+/// The JSON chapters file for a list of chapters.
+pub fn chapters_json(chapters: &[Chapter]) -> String {
+    let list: Vec<Json> = chapters
+        .iter()
+        .map(|c| {
+            let mut m = Map::new();
+            m.insert("startTime".into(), serde_json::json!(c.start));
+            if !c.title.is_empty() {
+                m.insert("title".into(), Json::String(c.title.clone()));
+            }
+            if let Some(u) = &c.url {
+                m.insert("url".into(), Json::String(u.clone()));
+            }
+            if let Some(i) = &c.img {
+                m.insert("img".into(), Json::String(i.clone()));
+            }
+            if !c.toc {
+                m.insert("toc".into(), Json::Bool(false));
+            }
+            Json::Object(m)
+        })
+        .collect();
+    serde_json::to_string_pretty(&serde_json::json!({ "version": "1.2.0", "chapters": list })).unwrap() + "\n"
+}
+
 // ---------- show settings ----------
 
 pub fn check_category(cat: &str, sub: &str) -> Result<(), String> {
@@ -1486,6 +1511,7 @@ mod tests {
         assert_eq!(c.len(), 2);
         assert_eq!(c[1].start, 61.5);
         assert!(!c[1].toc);
+        assert_eq!(parse_chapters(&chapters_json(&c)).unwrap(), c);
         let errs = parse_chapters(r#"{"chapters":[{"startTime":5},{"startTime":1,"img":"http://x/a.jpg"},{"title":"no start"}]}"#).unwrap_err();
         let all = errs.join("\n");
         for want in ["\"version\"", "chapter 2 starts before", "chapter 2: \"img\" must be an https", "chapter 3: \"startTime\""] {

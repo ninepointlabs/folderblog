@@ -1,5 +1,6 @@
 //! Content discovery and the content rules: title, slug and date resolution.
-//! Content files are only ever read, never written.
+//! Content files are only ever read, never written. (The one exception is `folderblog mcp`,
+//! whose tools write episode files, and only inside `podcast/`; see `mcp.rs`.)
 
 use crate::state::State;
 use crate::util::{slugify, title_from_slug};

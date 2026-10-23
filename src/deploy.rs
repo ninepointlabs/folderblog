@@ -243,6 +243,33 @@ pub enum Outcome {
     Deployed(String),
 }
 
+/// Held while one blog is built and deployed, so the watcher and a publish (MCP or CLI) take turns
+/// instead of building into the same folder or deploying at once. Released when dropped.
+pub struct BuildLock(#[allow(dead_code)] std::fs::File);
+
+/// Take the blog's build/deploy lock (`.blog/deploy.lock`), waiting for whoever has it.
+/// `waiting` is called once if someone else has it first.
+pub fn lock(blog_dir: &Path, waiting: impl FnOnce()) -> Result<BuildLock> {
+    let dir = blog_dir.join(STATE_DIR);
+    std::fs::create_dir_all(&dir).with_context(|| format!("creating {}", dir.display()))?;
+    let path = dir.join("deploy.lock");
+    let f = std::fs::OpenOptions::new()
+        .create(true)
+        .truncate(false)
+        .write(true)
+        .open(&path)
+        .with_context(|| format!("opening {}", path.display()))?;
+    match f.try_lock() {
+        Ok(()) => {}
+        Err(std::fs::TryLockError::WouldBlock) => {
+            waiting();
+            f.lock().with_context(|| format!("locking {}", path.display()))?;
+        }
+        Err(std::fs::TryLockError::Error(e)) => return Err(e).with_context(|| format!("locking {}", path.display())),
+    }
+    Ok(BuildLock(f))
+}
+
 /// Deploy the last good build. Skips if identical to what was last deployed, unless forced.
 pub fn deploy(blog_dir: &Path, force: bool) -> Result<Outcome> {
     deploy_with(blog_dir, force, &crate::github::config_dir())

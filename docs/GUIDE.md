@@ -631,6 +631,19 @@ uploaded once; saving other files doesn't upload them again.
 `public_url = "https://..."` under `[podcast.storage]`; `folderblog podcast` lists each
 episode's file name on the host, and publishing waits until each file is there.
 
+**Let an AI helper put it up.** If you use an AI helper such as Claude Code, Cursor or
+Claude Desktop, you can connect it to folderblog (see `folderblog mcp` below). Then you
+can just say "put this up" and point at a recording. The helper looks at the file, makes
+the episode folder, writes the show notes and chapters, fills in the podcast details, and
+checks everything. The episode stays a **draft**: nobody sees it until you say yes. The
+helper shows you the title, date and notes and asks first; only then does it publish.
+(If you'd rather always publish yourself, put `mcp_publish = false` under `[podcast]`; the
+helper then gives you the command to run.)
+
+**Publishing an episode yourself.** Remove `draft: true` from its `index.md`, or run
+`folderblog podcast publish --episode first-episode ~/Blogs/myblog`, which also checks it,
+uploads it and publishes the blog straight away.
+
 **Check before you share it.** `folderblog check` is strict about podcasts: it checks
 everything podcast apps need and explains anything missing in plain words. Once your
 show is online, you can also paste the feed address into
@@ -1040,6 +1053,8 @@ folderblog podcast [on|off] [BLOG]
 - `off` turns it off. Your episodes stay where they are.
 - Nothing after `podcast` lists the episodes, the feed address and any problems.
 - `setup` connects audio hosting on Cloudflare R2, step by step (see "Start a podcast").
+- `publish --episode SLUG` publishes a draft episode now: it checks it, uploads the audio,
+  and publishes the blog. If anything is wrong, it stays a draft and you're told why.
 
 For scripts and AI helpers, `setup` also runs without questions. Secrets are only ever
 read from stdin, never typed after the command, so they don't end up in your shell history:
@@ -1057,6 +1072,28 @@ folderblog podcast setup --account-id ID --bucket NAME --public-url https://... 
 - `--lightning-address you@rizful.com` adds tips.
 - `--no-browser` prints the links instead of opening them.
 - `--show` shows the current settings, with only the last four letters of the key.
+
+### folderblog mcp
+
+Lets an AI helper (Claude Code, Cursor, Claude Desktop and others that speak MCP) work on
+your podcast. You don't run this yourself; your helper starts it. Tell your helper about it
+once, for example in Claude Code:
+
+```sh
+claude mcp add folderblog -- folderblog mcp
+```
+
+```sh
+folderblog mcp [--root FOLDER]
+```
+
+- `--root` is the folder that holds your blogs (default `~/Blogs`), so you can say "my
+  blog example.com" instead of a full path.
+
+The helper can see the show and its episodes, look at a recording, make a **draft**
+episode, change its details, write chapters and run the checks. Publishing is the only
+thing that changes your public site, and it needs your yes. folderblog never gives the
+helper your storage keys, and only ever writes inside your blog's `podcast/` folder.
 
 ### folderblog data
 

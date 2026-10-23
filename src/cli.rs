@@ -134,9 +134,9 @@ pub enum Cmd {
         /// The blog's folder (default: the folder you are in)
         blog: Option<PathBuf>,
     },
-    /// Turn the podcast on or off, or `setup` its audio hosting on Cloudflare R2 (no argument: show its state and any problems)
+    /// Turn the podcast on or off, `setup` its audio hosting on Cloudflare R2, or `publish` an episode (no argument: show its state and any problems)
     Podcast {
-        /// `on`, `off` or `setup` (leave out to see the podcast's state)
+        /// `on`, `off`, `setup` or `publish` (leave out to see the podcast's state)
         state: Option<String>,
         /// The blog's folder (default: the folder you are in)
         blog: Option<PathBuf>,
@@ -176,6 +176,15 @@ pub enum Cmd {
         /// setup: print links instead of opening them in the browser
         #[arg(long)]
         no_browser: bool,
+        /// publish: the episode's slug (or folder name)
+        #[arg(long)]
+        episode: Option<String>,
+    },
+    /// Run the MCP server on stdin/stdout, so an agent can make, check and (once you say yes) publish podcast episodes
+    Mcp {
+        /// The folder that holds your blogs, for blogs given by name (default: ~/Blogs)
+        #[arg(long, env = "FOLDERBLOG_ROOT")]
+        root: Option<PathBuf>,
     },
     /// Regenerate the contract section of the blog's AGENTS.md (prints it without --write)
     AgentsMd {

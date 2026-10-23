@@ -314,6 +314,7 @@ pub const CONFIG_KEYS: &[Field] = &[
     f("podcast.in_main_feed", "bool", "Also list episodes with the posts: in `posts`, tags, years and `/feed.xml` (default false). Front matter `in_main_feed` overrides it per episode."),
     f("podcast.lightning_address", "string", "Optional Lightning address (`name@domain`) for listener tips, written as `podcast:value`. New to Lightning? Rizful (https://rizful.com) gives you an address."),
     f("podcast.lightning_name", "string", "Name shown for the Lightning recipient (default: the author)."),
+    f("podcast.mcp_publish", "bool", "Let an agent publish an episode through `folderblog mcp` once you say yes in the chat (default true; it must still pass `confirm: true`). When false, the agent is given the command for you to run instead."),
     f("podcast.storage.public_url", "string", "Public https base URL where episode files are hosted, e.g. `https://media.example.com` or `https://pub-….r2.dev`. Enclosures are `<public_url>/<blog>/<slug>-<hash>.<ext>`. Without it, episodes are left out of the build. Set by `folderblog podcast setup`."),
     f("podcast.storage.type", "string", "`r2` (Cloudflare R2) or `s3` (any S3-compatible host): deploys upload new episode files first and hold the whole deploy if one fails. Leave it out if you upload the files yourself; deploys then only check each file is at `public_url`. Keys are never here: they live in `~/.config/folderblog/storage/<bucket>.json` (mode 0600)."),
     f("podcast.storage.account_id", "string", "r2: the Cloudflare Account ID."),
@@ -562,6 +563,11 @@ in; it never overwrites). `podcast` is a global on every page.
   valid chapters JSON and transcripts.
 - Never edit `podcast/` to make a design work; `folderblog preview --fixtures stress` has
   sample episodes (turn the podcast on first).
+- `folderblog mcp` gives agents podcast tools over MCP (stdio). They are the only thing
+  that ever writes content: episode folders, `index.md`, `chapters.json` and transcripts,
+  always inside `podcast/` and never anywhere else. New episodes are drafts; publishing
+  needs `publish_episode` with `confirm: true` after the user says yes (or
+  `folderblog podcast publish --episode SLUG` run by the user).
 
 ## Template context
 
