@@ -11,6 +11,7 @@ mod gallery;
 mod github;
 mod manpage;
 mod markdown;
+mod mcp;
 mod podcast;
 mod preview;
 mod render;
@@ -261,11 +262,12 @@ fn run(cli: Cli) -> Result<i32> {
             lightning_address,
             show,
             no_browser,
+            episode,
         } => {
             // `folderblog podcast BLOG` shows that blog's podcast.
             let (state, blog) = match state {
-                Some(s) if blog.is_none() && !matches!(s.as_str(), "on" | "off" | "setup") => (None, Some(PathBuf::from(s))),
-                Some(s) if !matches!(s.as_str(), "on" | "off" | "setup") => bail!("unknown podcast action {s:?}; use `on`, `off` or `setup`"),
+                Some(s) if blog.is_none() && !matches!(s.as_str(), "on" | "off" | "setup" | "publish") => (None, Some(PathBuf::from(s))),
+                Some(s) if !matches!(s.as_str(), "on" | "off" | "setup" | "publish") => bail!("unknown podcast action {s:?}; use `on`, `off`, `setup` or `publish`"),
                 s => (s, blog),
             };
             let blog = blog_dir(blog)?;
@@ -283,6 +285,15 @@ fn run(cli: Cli) -> Result<i32> {
                 show,
                 no_browser,
             };
+            if state.as_deref() == Some("publish") {
+                let slug = episode.context("which episode? pass --episode SLUG (`folderblog podcast` lists them)")?;
+                let ctx = mcp::Ctx { root: default_root(None), config_dir: github::config_dir() };
+                let r = mcp::publish(&ctx, &blog, &slug)?;
+                println!("published: {}", r["episode_url"].as_str().unwrap_or(""));
+                println!("feed: {}", r["feed_url"].as_str().unwrap_or(""));
+                println!("deploy: {}", r["deploy"].as_str().unwrap_or(""));
+                return Ok(0);
+            }
             if state.as_deref() != Some("setup") {
                 return podcast_cmd(&blog, state.as_deref());
             }
@@ -313,6 +324,10 @@ fn run(cli: Cli) -> Result<i32> {
                 public_get: &storage::public_get,
             };
             setup::run(&blog, opts, &mut io)
+        }
+        Cmd::Mcp { root } => {
+            mcp::serve(mcp::Ctx { root: default_root(root), config_dir: github::config_dir() })?;
+            Ok(0)
         }
         Cmd::AgentsMd { blog, write } => {
             let blog = blog_dir(blog)?;

@@ -1891,3 +1891,167 @@ fn setup_interactive_walks_a_new_user_through_signup() {
     assert_eq!(custom.headers["cf-r2-jurisdiction"], "default");
     assert_eq!(crate::config::Config::load(&dir).unwrap().podcast.lightning_address, "me@rizful.com");
 }
+
+// ---------- MCP tools ----------
+
+fn mcp_ctx(b: &Blog, conf: &Path) -> crate::mcp::Ctx {
+    crate::mcp::Ctx { root: b.dir.parent().unwrap().to_path_buf(), config_dir: conf.to_path_buf() }
+}
+
+/// Every file outside `podcast/` with its contents, to prove the tools never write there.
+fn outside_podcast(dir: &Path) -> Vec<(String, Vec<u8>)> {
+    let mut v: Vec<(String, Vec<u8>)> = walkdir::WalkDir::new(dir)
+        .into_iter()
+        .filter_entry(|e| e.file_name() != ".blog" && e.file_name() != "podcast")
+        .filter_map(|e| e.ok())
+        .filter(|e| e.file_type().is_file())
+        .map(|e| (e.path().display().to_string(), fs::read(e.path()).unwrap()))
+        .collect();
+    v.sort();
+    v
+}
+
+fn tmp_file(dir: &Path, name: &str, bytes: &[u8]) -> String {
+    let p = dir.join(name);
+    fs::write(&p, bytes).unwrap();
+    p.display().to_string()
+}
+
+#[test]
+fn mcp_create_episode_writes_a_draft_inside_podcast_only() {
+    let b = podcast_blog("");
+    let conf = tempfile::tempdir().unwrap();
+    let ctx = mcp_ctx(&b, conf.path());
+    let src = tempfile::tempdir().unwrap();
+    let audio = tmp_file(src.path(), "rec.mp3", MP3);
+    let vtt = tmp_file(src.path(), "t.vtt", b"WEBVTT\n\n00:00.000 --> 00:01.000\nHello there\n");
+    let before = outside_podcast(&b.dir);
+    let args = |title: &str| crate::mcp::CreateArgs {
+        blog: "example.com".into(),
+        audio_path: audio.clone(),
+        title: Some(title.into()),
+        notes_markdown: Some("We talk about **things**.".into()),
+        summary: Some("Things.".into()),
+        season: Some(1),
+        episode: None,
+        episode_type: None,
+        explicit: Some(false),
+        tags: Some(vec!["Talk".into()]),
+        persons: Some(vec![crate::mcp::PersonArg { name: "Ada".into(), role: Some("host".into()), href: None, img: None }]),
+        transcript_path: Some(vtt.clone()),
+        chapters: Some(vec![crate::mcp::ChapterArg { start: 0.0, title: "Intro".into(), url: None, img: None }]),
+        date: Some("2024-05-01".into()),
+    };
+    let r = crate::mcp::create_episode(&ctx, &args("First things")).unwrap();
+    assert_eq!(r["draft"], true);
+    assert_eq!(r["created"], "podcast/2024-05-01-first-things/");
+    assert_eq!(r["front_matter"]["episode"], 1);
+    assert_eq!(r["duration"], "0:03");
+    assert!(r["transcript_text"].as_str().unwrap().contains("Hello there"));
+    let dir = b.dir.join("podcast/2024-05-01-first-things");
+    for f in ["episode.mp3", "transcript.vtt", "chapters.json", "index.md"] {
+        assert!(dir.join(f).is_file(), "{f}");
+    }
+    let index = fs::read_to_string(dir.join("index.md")).unwrap();
+    assert!(index.contains("draft: true") && index.contains("guid:") && index.ends_with("We talk about **things**."), "{index}");
+    // The next one is numbered after it; drafts never reach the build.
+    let r2 = crate::mcp::create_episode(&ctx, &args("Second things")).unwrap();
+    assert_eq!(r2["front_matter"]["episode"], 2);
+    assert_eq!(r2["front_matter"]["season"], 1);
+    b.build().unwrap();
+    assert!(!b.read_out("podcast/feed.xml").contains("<item>"));
+    assert_eq!(outside_podcast(&b.dir), before, "nothing outside podcast/ was written");
+    // Refusals.
+    let e = format!("{:#}", crate::mcp::create_episode(&ctx, &args("First things")).unwrap_err());
+    assert!(e.contains("already exists"), "{e}");
+    let mut bad = args("Third");
+    bad.audio_path = tmp_file(src.path(), "rec.m4a", MP4);
+    assert!(format!("{:#}", crate::mcp::create_episode(&ctx, &bad).unwrap_err()).contains("export the episode as MP3"));
+    let mut bad = args("Fourth");
+    bad.episode_type = Some("special".into());
+    assert!(format!("{:#}", crate::mcp::create_episode(&ctx, &bad).unwrap_err()).contains("full, trailer or bonus"));
+    assert!(!b.dir.join("podcast/2024-05-01-fourth").exists(), "a refused episode leaves nothing behind");
+}
+
+#[test]
+fn mcp_update_and_chapters_validate_strictly() {
+    let b = podcast_blog("");
+    let conf = tempfile::tempdir().unwrap();
+    let ctx = mcp_ctx(&b, conf.path());
+    add_episode(&b, "2024-05-01-pilot", &format!("guid: \"{GUID1}\"\ndraft: true\nmine: kept"), "episode.mp3", MP3);
+    let up = |fields: serde_json::Value| crate::mcp::update_episode(&ctx, &crate::mcp::UpdateArgs { blog: "example.com".into(), slug: "pilot".into(), fields: fields.as_object().unwrap().clone() });
+    let r = up(serde_json::json!({ "title": "The Pilot", "season": 2, "explicit": true, "notes_markdown": "New notes." })).unwrap();
+    assert_eq!(r["front_matter"]["title"], "The Pilot");
+    let index = fs::read_to_string(b.dir.join("podcast/2024-05-01-pilot/index.md")).unwrap();
+    assert!(index.contains("mine: kept") && index.contains(GUID1) && index.ends_with("New notes."), "{index}");
+    for (fields, want) in [
+        (serde_json::json!({ "explicit": "yes" }), "must be true or false"),
+        (serde_json::json!({ "season": 0 }), "whole number"),
+        (serde_json::json!({ "guid": "new" }), "never changes"),
+        (serde_json::json!({ "draft": false }), "use publish_episode"),
+        (serde_json::json!({ "colour": "red" }), "not a field"),
+        (serde_json::json!({ "persons": [{ "name": "A", "href": "http://x" }] }), "https://"),
+    ] {
+        let e = format!("{:#}", up(fields).unwrap_err());
+        assert!(e.contains(want), "{want}: {e}");
+    }
+    let ch = |c: Vec<crate::mcp::ChapterArg>| crate::mcp::set_chapters(&ctx, &crate::mcp::ChaptersArgs { blog: "example.com".into(), slug: "pilot".into(), chapters: c });
+    ch(vec![
+        crate::mcp::ChapterArg { start: 0.0, title: "Intro".into(), url: None, img: None },
+        crate::mcp::ChapterArg { start: 90.5, title: "Talk".into(), url: Some("https://example.com".into()), img: None },
+    ])
+    .unwrap();
+    let json = fs::read_to_string(b.dir.join("podcast/2024-05-01-pilot/chapters.json")).unwrap();
+    assert_eq!(crate::podcast::parse_chapters(&json).unwrap().len(), 2);
+    let e = format!("{:#}", ch(vec![crate::mcp::ChapterArg { start: 0.0, title: "x".into(), url: Some("http://plain".into()), img: None }]).unwrap_err());
+    assert!(e.contains("https://"), "{e}");
+    // validate sees problems in drafts, as they would be once published.
+    b.write("podcast/2024-05-01-pilot/chapters.json", "{}");
+    let v = crate::mcp::validate(&ctx, &crate::mcp::ValidateArgs { blog: "example.com".into(), slug: Some("pilot".into()) }).unwrap();
+    assert_eq!(v["ok"], false);
+    assert!(v["errors"].to_string().contains("\\\"version\\\" is required"), "{v}");
+}
+
+#[test]
+fn mcp_publish_needs_confirm_then_uploads_and_deploys() {
+    let mock = crate::mock_s3::Mock::start(mock_creds());
+    let (b, conf) = storage_blog(&mock);
+    let ctx = mcp_ctx(&b, conf.path());
+    add_episode(&b, "2024-05-01-pilot", &format!("guid: \"{GUID1}\"\ndraft: true\ntitle: Pilot"), "episode.mp3", MP3);
+    let publish = |confirm: bool| crate::mcp::publish_episode(&ctx, &crate::mcp::PublishArgs { blog: "example.com".into(), slug: "pilot".into(), confirm });
+    let e = format!("{:#}", publish(false).unwrap_err());
+    assert!(e.contains("not published") && e.contains("confirm: true"), "{e}");
+    assert!(fs::read_to_string(b.dir.join("podcast/2024-05-01-pilot/index.md")).unwrap().contains("draft: true"));
+    assert!(mock.requests().is_empty(), "nothing uploaded without confirm");
+    let r = publish(true).unwrap();
+    assert_eq!(r["published"], true);
+    assert_eq!(r["episode_url"], "https://example.com/podcast/pilot/");
+    assert_eq!(r["feed_url"], "https://example.com/podcast/feed.xml");
+    assert!(r["enclosure"].as_str().unwrap().starts_with("https://media.example.com/example.com/pilot-"));
+    assert!(b.dir.join("deployed-marker").exists());
+    assert!(b.read_out("podcast/feed.xml").contains(GUID1));
+    assert!(mock.requests().iter().any(|r| r.method == "PUT"));
+    let status = crate::mcp::podcast_status(&ctx, &crate::mcp::BlogArgs { blog: "example.com".into() }).unwrap().to_string();
+    assert!(status.contains("…1234") && !status.contains("canary-secret-value") && !status.contains("AKIDMOCK1234"), "{status}");
+    for out in [r.to_string(), status] {
+        assert!(!out.contains("canary-secret-value"));
+    }
+}
+
+#[test]
+fn mcp_publish_refuses_problems_and_respects_mcp_publish_false() {
+    let mock = crate::mock_s3::Mock::start(mock_creds());
+    let (b, conf) = storage_blog(&mock);
+    let ctx = mcp_ctx(&b, conf.path());
+    add_episode(&b, "2024-05-01-pilot", &format!("guid: \"{GUID1}\"\ndraft: true\nseason: zero"), "episode.mp3", MP3);
+    let args = crate::mcp::PublishArgs { blog: "example.com".into(), slug: "pilot".into(), confirm: true };
+    let e = format!("{:#}", crate::mcp::publish_episode(&ctx, &args).unwrap_err());
+    assert!(e.contains("draft again") && e.contains("season must be a whole number"), "{e}");
+    assert!(fs::read_to_string(b.dir.join("podcast/2024-05-01-pilot/index.md")).unwrap().contains("draft: true"));
+    assert!(!b.dir.join("deployed-marker").exists());
+    let cfg = fs::read_to_string(b.dir.join("blog.toml")).unwrap().replace("[podcast]\n", "[podcast]\nmcp_publish = false\n");
+    fs::write(b.dir.join("blog.toml"), cfg).unwrap();
+    let r = crate::mcp::publish_episode(&ctx, &args).unwrap();
+    assert_eq!(r["published"], false);
+    assert!(r["command"].as_str().unwrap().starts_with("folderblog podcast publish --episode pilot "), "{r}");
+}

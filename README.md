@@ -27,7 +27,7 @@ without touching the engine.
 - [Running in the background](#running-in-the-background)
 - [Writing](#writing)
 - [Photo gallery](#photo-gallery)
-- [Podcast](#podcast)
+- [Podcast](#podcast) (and [MCP for agents](#let-an-agent-put-up-episodes-mcp))
 - [Themes and design](#themes-and-design)
 - [Configuration (`blog.toml`)](#configuration-blogtoml)
 - [Other hosts](#other-hosts)
@@ -450,6 +450,44 @@ podcast/
 
 `folderblog podcast off` turns it off again and leaves your episodes where they are.
 
+### Let an agent put up episodes (MCP)
+
+`folderblog mcp` is an MCP server on stdio. Point an agent at an audio file and say "put
+this up": it inspects the file, creates a **draft** episode, writes the show notes,
+chapters and Podcasting 2.0 details, validates, and publishes only after you say yes. The
+server calls no AI itself, never returns secrets, and only writes inside `<blog>/podcast/`.
+
+| Tool | What it does | Writes? |
+|---|---|---|
+| `podcast_status` | Show settings, hosting (key masked), episode counts, problems | no |
+| `list_episodes` | Episodes with draft state, URL, guid, duration, check status | no |
+| `inspect_audio` | Size, duration, format, bitrate, embedded title; MP3/MP4 only | no |
+| `create_episode` | Copies the audio (and transcript) into `podcast/<date>-<slug>/`, writes `index.md` with `draft: true` and a new guid, numbers it | draft only |
+| `update_episode` | Changes front matter or notes, adds a transcript; strict validation | yes |
+| `set_chapters` | Writes a valid `chapters.json` | yes |
+| `validate` | `folderblog check` plus the podcast rules, drafts included | no |
+| `publish_episode` | Needs `confirm: true` (marked `destructiveHint`): sets `draft: false`, uploads, deploys, checks the hosted file, returns the episode and feed URLs | yes, public |
+
+Every tool takes `blog`: a path, or a blog's name under `~/Blogs` (`--root` or
+`FOLDERBLOG_ROOT` changes it). With `[podcast] mcp_publish = false`, `publish_episode`
+returns `folderblog podcast publish --episode SLUG BLOG` for you to run instead.
+
+Claude Code:
+
+```sh
+claude mcp add folderblog -- folderblog mcp
+```
+
+Cursor (`~/.cursor/mcp.json`) and Claude Desktop (`claude_desktop_config.json`):
+
+```json
+{
+  "mcpServers": {
+    "folderblog": { "command": "folderblog", "args": ["mcp"] }
+  }
+}
+```
+
 ## Themes and design
 
 Every new blog gets a plain, readable default theme in `theme/`. Change anything: it is
@@ -608,7 +646,8 @@ branch. Uncommitted edits on the branch still publish.
 | `folderblog check [BLOG] [--fixtures SET]` | Find template errors, feed problems, broken links |
 | `folderblog data [URL]` | Template context for a page (or list all pages) |
 | `folderblog gallery [on\|off] [BLOG]` | Turn the photo gallery on or off (adds `gallery/` and its templates) |
-| `folderblog podcast [on\|off\|setup] [BLOG]` | Turn the podcast on or off, set up audio hosting on Cloudflare R2, or list episodes and problems |
+| `folderblog podcast [on\|off\|setup\|publish] [BLOG]` | Turn the podcast on or off, set up audio hosting on Cloudflare R2, publish an episode (`--episode SLUG`), or list episodes and problems |
+| `folderblog mcp [--root DIR]` | MCP server on stdio for agents: draft, check and (after your yes) publish episodes |
 | `folderblog agents-md [BLOG] [--write]` | Refresh the blog's AGENTS.md |
 | `folderblog guide` | The step-by-step guide to everything ([docs/GUIDE.md](docs/GUIDE.md)) |
 | `folderblog man` | The same guide as a manual page (`man folderblog` once installed) |
