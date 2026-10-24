@@ -52,6 +52,10 @@ My first post." > ~/Blogs/myblog/posts/hello.md
 
 A minute later it's live at `https://yourname.github.io/myblog/`. `folderblog status` shows every blog, its last build and publish, and GitHub's Pages build.
 
+No systemd user session (a container, a server, an SSH login)? `install-service` then fails with `systemctl --user daemon-reload failed`. Run `folderblog watch` in a terminal or `tmux` instead, or `loginctl enable-linger $USER`, log in again and retry.
+
+Publishing somewhere other than GitHub Pages? Set `base_url` in `blog.toml` to the site's real address first: a blog made with `--no-github` starts with a placeholder like `https://myblog.example.com`. The [full guide](https://github.com/ninepointlabs/folderblog/blob/main/docs/GUIDE.md) has the `[deploy]` choices.
+
 For your own domain: `folderblog new example.com --domain example.com` prints the DNS records to add.
 
 ## 4. Write
@@ -120,7 +124,7 @@ Published builds then add GoatCounter's script to every page, with any theme. Pa
 
 ## 5. Make it yours
 
-A theme is the `theme/` folder in the blog. Files ending in `.html` or `.jinja` are templates rendered to the same path, and everything else is copied. A route header makes one template produce many pages:
+A theme is the `theme/` folder in the blog. Files ending in `.html` or `.jinja` are templates rendered to the same path, and everything else is copied. A route header at the top of a template sets its URL instead (the default `theme/archive.html` starts with `url = "/archive/"`, so it becomes `/archive/`, not `/archive.html`), and can make one template produce many pages:
 
 ```jinja
 {#---
@@ -135,5 +139,6 @@ Hand the blog folder to a coding agent with a one-line design brief. It will fin
 folderblog preview                    # live reload, drafts included
 folderblog preview --fixtures stress  # long titles, code, tables, empty pages
 folderblog check                      # template errors (file:line), feed, broken links
-folderblog data /2026/09/hello/       # the exact template context for a page
+folderblog data                      # every URL and what made it
+folderblog data /archive/             # the exact template context for one of them
 ```

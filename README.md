@@ -102,34 +102,41 @@ is the only dependency.
 
 **Arch Linux / Omarchy / Manjaro**
 ```sh
-curl -LO https://github.com/ninepointlabs/folderblog/releases/latest/download/folderblog-bin-0.2.8-1-x86_64.pkg.tar.zst
+curl -LO https://github.com/ninepointlabs/folderblog/releases/download/v0.2.8/folderblog-bin-0.2.8-1-x86_64.pkg.tar.zst
 sudo pacman -U folderblog-bin-0.2.8-1-x86_64.pkg.tar.zst
 ```
 
 **Debian / Ubuntu / Pop!_OS / Mint**
 ```sh
-curl -LO https://github.com/ninepointlabs/folderblog/releases/latest/download/folderblog_0.2.8-1_amd64.deb
+curl -LO https://github.com/ninepointlabs/folderblog/releases/download/v0.2.8/folderblog_0.2.8-1_amd64.deb
 sudo apt install ./folderblog_0.2.8-1_amd64.deb
 ```
 
 **Fedora / RHEL / openSUSE**
 ```sh
-sudo dnf install https://github.com/ninepointlabs/folderblog/releases/latest/download/folderblog-0.2.8-1.x86_64.rpm
+sudo dnf install https://github.com/ninepointlabs/folderblog/releases/download/v0.2.8/folderblog-0.2.8-1.x86_64.rpm
 ```
 
 **Any other Linux (tarball)**
 ```sh
-curl -L https://github.com/ninepointlabs/folderblog/releases/latest/download/folderblog-0.2.8-x86_64-linux.tar.gz | tar xz
+curl -L https://github.com/ninepointlabs/folderblog/releases/download/v0.2.8/folderblog-0.2.8-x86_64-linux.tar.gz | tar xz
 sudo install -Dm755 folderblog-0.2.8-x86_64-linux/folderblog /usr/local/bin/folderblog
 ```
 
 **With [autonomix-cli](https://github.com/ninepointlabs/autonomix-cli)**: `autonomix-cli add https://github.com/ninepointlabs/folderblog`
 
-**From source** (Rust 1.89 or newer): `cargo install --git https://github.com/ninepointlabs/folderblog`
+**From source** (Rust 1.89 or newer): `cargo install --git https://github.com/ninepointlabs/folderblog --tag v0.2.8`
+(without `--tag` you get the newest, unreleased code from `main`).
+
+These links are for folderblog 0.2.8, so they keep working after newer releases come out.
+For the newest version, take the same commands from the
+[latest release](https://github.com/ninepointlabs/folderblog/releases/latest) (the
+version number is in each file name).
 
 Check it worked: `folderblog --version`.
 
-**Updating:** install the new package (or binary) the same way, then restart the service:
+**Updating:** install the new package (or binary) the same way, with the new release's
+file name, then restart the service:
 `systemctl --user restart folderblog`. On its first start with the new version it brings
 every blog up to date (see [Running in the background](#running-in-the-background)).
 
@@ -288,6 +295,11 @@ If you installed a package, this is the same as
 `systemctl --user enable --now folderblog`. The service watches `~/Blogs`. For a
 different folder, run `systemctl --user edit folderblog` and add
 `Environment=FOLDERBLOG_ROOT=/path/to/blogs` under `[Service]`.
+
+**No systemd user session** (a container, a headless server, a plain SSH login):
+`install-service` fails with `systemctl --user daemon-reload failed`. Either run
+`folderblog watch` in a terminal or `tmux` (same loop, in the foreground), or run
+`loginctl enable-linger $USER`, log in again and retry.
 
 When the service starts it builds every blog once, so changes made while it was stopped
 are published. Failed publishes (offline, login expired…) are retried every 5 minutes.
@@ -553,12 +565,16 @@ folderblog preview                    # http://127.0.0.1:4000, live reload, draf
 folderblog preview --fixtures stress  # your theme against long titles, code, tables, images, empty lists…
 folderblog check                      # template errors with file:line, feed validation, broken links
 folderblog check --fixtures empty
-folderblog data /2026/09/hello/       # the exact template context for that page, as JSON
+folderblog data                      # every URL and what made it
+folderblog data /archive/             # the exact template context for one of them, as JSON
 ```
 
 In short:
 - `theme/**/*.html` and `*.jinja` files are templates rendered to the same path, and
-  everything else is copied.
+  everything else is copied. A template that starts with a route header (a `{#--- … ---#}`
+  comment holding `url = "…"`) is published at that URL instead: the default
+  `theme/archive.html` begins with `url = "/archive/"`, so it becomes `/archive/`, not
+  `/archive.html`.
 - Paths starting with `_` (`_layouts/`, `_partials/`) are never published.
 - A template can declare `each = "tags"` to make one page per tag (or per year, per
   series, per anything).
@@ -645,6 +661,11 @@ alone. If your theme sets a Content-Security-Policy, allow the GoatCounter host 
 and images.
 
 ## Other hosts
+
+First set `base_url` at the top of `blog.toml` to the address where the site will live
+(`folderblog new --no-github`, or `new` while logged out, leaves the placeholder
+`https://NAME.example.com`, and every absolute link, the feeds and the sitemap are made
+from it; `folderblog check` warns while it's still the placeholder).
 
 **Any git remote / branch** (uses your normal git credentials):
 
