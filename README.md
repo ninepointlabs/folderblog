@@ -501,7 +501,8 @@ podcast/
 2. Fill in `index.md`: the title, summary, season and episode number, people, show notes.
    Every field is listed in the template with a note.
 3. Run `folderblog check`. It gives you a `guid` line to paste in (write it once, never
-   change it) and names anything else that needs fixing. `folderblog preview` plays the
+   change it; it suggests the same one every time) and names anything else that needs
+   fixing. While the episode is still `draft: true` these show up as warnings. `folderblog preview` plays the
    episode locally.
 4. Remove `draft: true`, or run `folderblog podcast publish --episode first-episode`.
    That changes only the `draft:` line to `draft: false` (your notes and comments stay),
