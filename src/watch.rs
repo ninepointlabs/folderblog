@@ -97,6 +97,27 @@ pub fn list_blogs(root: &Path) -> Vec<PathBuf> {
     v
 }
 
+/// Whether the background service (`folderblog install-service`) is running, so a failed
+/// deploy will be retried without anyone doing anything.
+pub fn service_running() -> bool {
+    std::process::Command::new("systemctl")
+        .args(["--user", "is-active", "--quiet", crate::APP])
+        .status()
+        .is_ok_and(|s| s.success())
+}
+
+/// What happens next to a deploy that failed outside the watcher.
+pub fn retry_note(blog: &Path, service_running: bool) -> String {
+    if service_running {
+        format!("The background service tries it again every {} minutes; `folderblog status` shows progress", RETRY_FAILED.as_secs() / 60)
+    } else {
+        format!(
+            "Nothing tries it again by itself (the background service isn't running): fix the problem, then run `folderblog deploy {}`, or `folderblog install-service` to have it retried for you",
+            blog.display()
+        )
+    }
+}
+
 /// Which blog (if any) a changed path belongs to, and whether it should trigger a rebuild.
 pub fn relevant(root: &Path, path: &Path) -> Option<PathBuf> {
     let rel = path.strip_prefix(root).ok()?;
@@ -182,7 +203,7 @@ pub fn build_and_deploy(blog: &Path) -> bool {
                 }
                 Err(e) => {
                     let msg = format!("{e:#}");
-                    log(format!("{name}: deploy FAILED:\n{msg}"));
+                    log(format!("{name}: deploy FAILED (tried again every {} minutes):\n{msg}", RETRY_FAILED.as_secs() / 60));
                     match crate::github::auth_problem(&e) {
                         Some(p) => notify_auth(&p),
                         None => notify_desktop(&format!("folderblog: {name} deploy failed"), &msg, true),

@@ -664,8 +664,11 @@ pub fn publish(ctx: &Ctx, blog: &Path, slug: &str) -> Result<Json> {
         Ok(crate::deploy::Outcome::Deployed(d)) => d,
         Ok(crate::deploy::Outcome::Unchanged) => "already live".into(),
         Ok(crate::deploy::Outcome::NoTarget) => bail!("the blog has no [deploy] target, so it was built but not published"),
-        // The episode stays published in the folder; the watcher (or the next deploy) retries.
-        Err(e) => bail!("the episode is marked published, but the deploy didn't finish: {e:#}. It is retried automatically; `folderblog status` shows progress"),
+        // The episode stays published in the folder; the watcher (if running) or the next deploy retries.
+        Err(e) => bail!(
+            "the episode is marked published (draft: false in its index.md), but the deploy didn't finish: {e:#}. {}",
+            crate::watch::retry_note(blog, crate::watch::service_running())
+        ),
     };
     Ok(json!({
         "published": true,

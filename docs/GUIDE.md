@@ -666,8 +666,10 @@ again: podcast apps keep following the show, because its `guid` never changes.
 up, with only the last four letters of the key.
 
 **When an upload fails.** If an episode can't be uploaded (you're offline, say), folderblog
-holds back the whole publish, so the feed never points at a missing file. It tries again
-by itself every few minutes, and `folderblog status` says why it's waiting. Episodes are
+holds back the whole publish, so the feed never points at a missing file. If the helper
+(`folderblog install-service`) is running, it tries again by itself every few minutes;
+otherwise publish again yourself once you're back online. `folderblog status` says why
+it's waiting. Episodes are
 uploaded once; saving other files doesn't upload them again.
 
 **Using another host.** If you upload the files yourself, set only
