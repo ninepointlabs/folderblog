@@ -80,18 +80,54 @@ fn read_episode(dir: &Path) -> Result<(Map<String, Json>, String)> {
 
 /// Write `index.md` back with YAML front matter. Only ever inside `podcast/`.
 fn write_episode(blog: &Path, dir: &Path, front: &Map<String, Json>, body: &str) -> Result<()> {
+    let yaml = serde_yaml::to_string(front)?;
+    let body = body.trim_start_matches('\n');
+    write_episode_text(blog, dir, &format!("---\n{yaml}---\n{body}"))
+}
+
+/// `text` (an episode's `index.md`) with its front matter's `draft: true` line changed to
+/// `draft: false` and every other byte kept: comments, key order, quoting, line endings.
+/// Unchanged if the episode isn't a draft. An error if the flag isn't on a line of its own.
+pub fn set_draft_false(text: &str) -> Result<String> {
+    let (front, _, _) = split_front_matter(&text.replace("\r\n", "\n"))?;
+    if front.get("draft").and_then(Json::as_bool) != Some(true) {
+        return Ok(text.to_string());
+    }
+    let fence = if text.starts_with("+++") { "+++" } else { "---" };
+    let line_re = regex::Regex::new(r#"^((?:draft|"draft"|'draft')[ \t]*[:=][ \t]*)true([ \t]*(?:#.*)?)$"#).unwrap();
+    let mut out = String::with_capacity(text.len() + 1);
+    let (mut changed, mut in_front) = (0, true);
+    for (i, line) in text.split_inclusive('\n').enumerate() {
+        let content = line.trim_end_matches('\n').trim_end_matches('\r');
+        if i > 0 && in_front && content.trim_end() == fence {
+            in_front = false;
+        } else if i > 0 && in_front && line_re.is_match(content) {
+            out.push_str(&line_re.replace(content, "${1}false${2}"));
+            out.push_str(&line[content.len()..]);
+            changed += 1;
+            continue;
+        }
+        out.push_str(line);
+    }
+    let (after, _, _) = split_front_matter(&out.replace("\r\n", "\n"))?;
+    let mut want = front.clone();
+    want.insert("draft".into(), json!(false));
+    if changed != 1 || after != want {
+        bail!("couldn't find the `draft: true` line in the front matter to change it; set `draft: false` by hand, then publish");
+    }
+    Ok(out)
+}
+
+/// Replace an episode's `index.md` with `text`. Only ever inside `podcast/`.
+fn write_episode_text(blog: &Path, dir: &Path, text: &str) -> Result<()> {
     let podcast_dir = blog.join(podcast::PODCAST_DIR).canonicalize()?;
     let dir = dir.canonicalize()?;
     if !dir.starts_with(&podcast_dir) || dir == podcast_dir {
         bail!("refusing to write outside {}", podcast_dir.display());
     }
-    let yaml = serde_yaml::to_string(front)?;
-    let body = body.trim_start_matches('\n');
-    let text = format!("---\n{yaml}---\n{body}");
-    let path = dir.join("index.md");
     let tmp = dir.join(".index.md.tmp");
     std::fs::write(&tmp, text)?;
-    std::fs::rename(tmp, path)?;
+    std::fs::rename(tmp, dir.join("index.md"))?;
     Ok(())
 }
 
@@ -596,17 +632,16 @@ pub fn publish(ctx: &Ctx, blog: &Path, slug: &str) -> Result<Json> {
     }
     let dir = episode_dir(blog, slug)?;
     let folder = format!("{}/{}", podcast::PODCAST_DIR, dir.file_name().unwrap().to_string_lossy());
-    let (mut front, body) = read_episode(&dir)?;
-    let was = front.get("draft").cloned();
-    front.insert("draft".into(), json!(false));
-    write_episode(blog, &dir, &front, &body)?;
+    // Only the draft line changes, so the notes and commented-out options stay as written.
+    let original = std::fs::read_to_string(dir.join("index.md"))?;
+    let published = set_draft_false(&original)?;
+    if published != original {
+        write_episode_text(blog, &dir, &published)?;
+    }
     let undo = |why: anyhow::Error| -> anyhow::Error {
-        let mut f = front.clone();
-        match &was {
-            Some(v) => f.insert("draft".into(), v.clone()),
-            None => f.remove("draft"),
-        };
-        let _ = write_episode(blog, &dir, &f, &body);
+        if published != original {
+            let _ = write_episode_text(blog, &dir, &original);
+        }
         why
     };
     let rep = crate::check::check(blog, None).map_err(&undo)?;

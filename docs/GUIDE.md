@@ -660,7 +660,8 @@ helper then gives you the command to run.)
 
 **Publishing an episode yourself.** Remove `draft: true` from its `index.md`, or run
 `folderblog podcast publish --episode first-episode ~/Blogs/myblog`, which also checks it,
-uploads it and publishes the blog straight away.
+uploads it and publishes the blog straight away. It changes only the `draft: true` line
+(to `draft: false`); everything else in `index.md`, notes included, stays as you wrote it.
 
 **Check before you share it.** `folderblog check` is strict about podcasts: it checks
 everything podcast apps need and explains anything missing in plain words. Once your
