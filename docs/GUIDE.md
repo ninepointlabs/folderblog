@@ -50,28 +50,28 @@ asked for your password. That is normal.
 **Arch Linux, Omarchy or Manjaro:**
 
 ```sh
-curl -LO https://github.com/ninepointlabs/folderblog/releases/download/v0.2.8/folderblog-bin-0.2.8-1-x86_64.pkg.tar.zst
-sudo pacman -U folderblog-bin-0.2.8-1-x86_64.pkg.tar.zst
+curl -LO https://github.com/ninepointlabs/folderblog/releases/download/v0.2.9/folderblog-bin-0.2.9-1-x86_64.pkg.tar.zst
+sudo pacman -U folderblog-bin-0.2.9-1-x86_64.pkg.tar.zst
 ```
 
 **Debian, Ubuntu, Pop!_OS or Mint:**
 
 ```sh
-curl -LO https://github.com/ninepointlabs/folderblog/releases/download/v0.2.8/folderblog_0.2.8-1_amd64.deb
-sudo apt install ./folderblog_0.2.8-1_amd64.deb
+curl -LO https://github.com/ninepointlabs/folderblog/releases/download/v0.2.9/folderblog_0.2.9-1_amd64.deb
+sudo apt install ./folderblog_0.2.9-1_amd64.deb
 ```
 
 **Fedora, RHEL or openSUSE:**
 
 ```sh
-sudo dnf install https://github.com/ninepointlabs/folderblog/releases/download/v0.2.8/folderblog-0.2.8-1.x86_64.rpm
+sudo dnf install https://github.com/ninepointlabs/folderblog/releases/download/v0.2.9/folderblog-0.2.9-1.x86_64.rpm
 ```
 
 **Any other Linux:**
 
 ```sh
-curl -L https://github.com/ninepointlabs/folderblog/releases/download/v0.2.8/folderblog-0.2.8-x86_64-linux.tar.gz | tar xz
-sudo install -Dm755 folderblog-0.2.8-x86_64-linux/folderblog /usr/local/bin/folderblog
+curl -L https://github.com/ninepointlabs/folderblog/releases/download/v0.2.9/folderblog-0.2.9-x86_64-linux.tar.gz | tar xz
+sudo install -Dm755 folderblog-0.2.9-x86_64-linux/folderblog /usr/local/bin/folderblog
 ```
 
 Now check that it worked:
@@ -80,9 +80,9 @@ Now check that it worked:
 folderblog --version
 ```
 
-It should say `folderblog 0.2.8`.
+It should say `folderblog 0.2.9`.
 
-These commands always install version 0.2.8, even after newer versions come out. The
+These commands always install version 0.2.9, even after newer versions come out. The
 [releases page](https://github.com/ninepointlabs/folderblog/releases/latest) has the
 newest one: use the same commands with its file names.
 
