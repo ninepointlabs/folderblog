@@ -2323,6 +2323,52 @@ fn build_lock_makes_a_second_build_or_deploy_wait_its_turn() {
     drop(crate::deploy::lock(&blog, || panic!("the lock should be free")).unwrap());
 }
 
+// ---------- the background service ----------
+
+#[test]
+fn status_names_the_service_state_even_without_a_user_session() {
+    assert_eq!(crate::service_state(Some("active\n")), "active");
+    assert_eq!(crate::service_state(Some("inactive\n")), "inactive");
+    assert_eq!(crate::service_state(Some("")), "unknown, no systemd user session");
+    assert_eq!(crate::service_state(None), "unknown, no systemctl");
+}
+
+#[test]
+fn a_failed_install_service_leaves_no_unit_behind() {
+    let tmp = tempfile::tempdir().unwrap();
+    let path = tmp.path().join("systemd/user/folderblog.service");
+    let mut calls: Vec<String> = vec![];
+    // No user bus: daemon-reload fails, as in a container.
+    let mut no_bus = |a: &[&str]| -> anyhow::Result<bool> {
+        calls.push(a.join(" "));
+        Ok(false)
+    };
+    let e = format!("{:#}", crate::install_unit(&path, "[Unit]\nnew\n", false, &mut no_bus).unwrap_err());
+    assert!(e.contains("daemon-reload failed") && e.contains("removed") && e.contains("folderblog watch") && e.contains("enable-linger"), "{e}");
+    assert!(!path.exists(), "the unit file is cleaned up");
+    assert_eq!(calls, vec!["--user daemon-reload"]);
+    // A unit that was already there is put back, not deleted, if enabling fails.
+    fs::write(&path, "[Unit]\nold\n").unwrap();
+    let mut calls: Vec<String> = vec![];
+    let mut enable_fails = |a: &[&str]| -> anyhow::Result<bool> {
+        calls.push(a.join(" "));
+        Ok(a[1] == "daemon-reload")
+    };
+    let e = format!("{:#}", crate::install_unit(&path, "[Unit]\nnew\n", false, &mut enable_fails).unwrap_err());
+    assert!(e.contains("put the previous unit back"), "{e}");
+    assert_eq!(fs::read_to_string(&path).unwrap(), "[Unit]\nold\n");
+    assert_eq!(calls, vec!["--user daemon-reload", "--user enable --now folderblog", "--user daemon-reload"]);
+    // No systemctl at all is a failure too.
+    fs::remove_file(&path).unwrap();
+    let mut missing = |_: &[&str]| -> anyhow::Result<bool> { Err(anyhow::anyhow!("No such file or directory")) };
+    assert!(crate::install_unit(&path, "[Unit]\nnew\n", false, &mut missing).is_err());
+    assert!(!path.exists());
+    // Success keeps the new unit.
+    let mut ok = |_: &[&str]| -> anyhow::Result<bool> { Ok(true) };
+    crate::install_unit(&path, "[Unit]\nnew\n", false, &mut ok).unwrap();
+    assert_eq!(fs::read_to_string(&path).unwrap(), "[Unit]\nnew\n");
+}
+
 // ---------- sample templates/ ----------
 
 /// Template text ready to use: `draft: true` removed and, with `all`, every commented-out

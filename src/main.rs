@@ -203,11 +203,9 @@ fn run(cli: Cli) -> Result<i32> {
         Cmd::Status { root, json } => {
             let root = default_root(root);
             let blogs = watch::list_blogs(&root);
-            let daemon = std::process::Command::new("systemctl")
-                .args(["--user", "is-active", APP])
-                .output()
-                .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
-                .unwrap_or_else(|_| "unknown".into());
+            let daemon = service_state(
+                std::process::Command::new("systemctl").args(["--user", "is-active", APP]).output().ok().map(|o| String::from_utf8_lossy(&o.stdout).to_string()).as_deref(),
+            );
             if json {
                 let v: serde_json::Map<String, serde_json::Value> = blogs
                     .iter()
@@ -527,6 +525,50 @@ pub fn new_blog(dir: &Path, github: Option<(&str, &str, Option<&str>)>) -> Resul
     Ok(())
 }
 
+/// What `systemctl --user is-active` said (None: systemctl isn't there). It prints nothing
+/// when no service manager answers (no user session: containers, plain SSH logins).
+fn service_state(is_active_stdout: Option<&str>) -> String {
+    match is_active_stdout.map(str::trim) {
+        None => "unknown, no systemctl".into(),
+        Some("") => "unknown, no systemd user session".into(),
+        Some(s) => s.to_string(),
+    }
+}
+
+const NO_USER_SESSION_HINT: &str = "without a systemd user session (in a container, or over SSH without lingering), run `folderblog watch` in a terminal or tmux instead, or run `loginctl enable-linger $USER` and log in again";
+
+/// Write the unit to `path` and start it with `systemctl` (via `run`, which says whether the
+/// command succeeded). If that fails, the unit file is put back as it was, so a failed install
+/// leaves nothing behind and never breaks a unit that was already there.
+fn install_unit(path: &Path, unit: &str, no_start: bool, run: &mut dyn FnMut(&[&str]) -> Result<bool>) -> Result<()> {
+    let before = std::fs::read_to_string(path).ok();
+    std::fs::create_dir_all(path.parent().unwrap())?;
+    std::fs::write(path, unit)?;
+    println!("wrote {}", path.display());
+    if no_start {
+        return Ok(());
+    }
+    for args in [vec!["--user", "daemon-reload"], vec!["--user", "enable", "--now", APP]] {
+        let ok = run(&args);
+        if !matches!(ok, Ok(true)) {
+            match &before {
+                Some(text) => std::fs::write(path, text)?,
+                None => std::fs::remove_file(path)?,
+            }
+            if args[1] != "daemon-reload" {
+                let _ = run(&["--user", "daemon-reload"]);
+            }
+            let why = match ok {
+                Err(e) => format!(" ({e:#})"),
+                _ => String::new(),
+            };
+            let undone = if before.is_some() { "put the previous unit back".to_string() } else { format!("removed {}", path.display()) };
+            bail!("systemctl {} failed{why}, so I {undone}; {NO_USER_SESSION_HINT}", args.join(" "));
+        }
+    }
+    Ok(())
+}
+
 fn install_service(root: &Path, no_start: bool, print: bool) -> Result<i32> {
     let exe = std::env::current_exe()?.canonicalize()?;
     // Installed from a package: the unit already ships in /usr/lib/systemd/user.
@@ -535,7 +577,7 @@ fn install_service(root: &Path, no_start: bool, print: bool) -> Result<i32> {
         if !no_start {
             let st = std::process::Command::new("systemctl").args(["--user", "enable", "--now", APP]).status()?;
             if !st.success() {
-                bail!("systemctl --user enable --now {APP} failed");
+                bail!("systemctl --user enable --now {APP} failed; {NO_USER_SESSION_HINT}");
             }
             println!("enabled the packaged service; logs: journalctl --user -u {APP} -f");
         } else {
@@ -552,22 +594,14 @@ fn install_service(root: &Path, no_start: bool, print: bool) -> Result<i32> {
         print!("{unit}");
         return Ok(0);
     }
-    let dir = home().join(".config/systemd/user");
-    std::fs::create_dir_all(&dir)?;
-    let path = dir.join(format!("{APP}.service"));
-    std::fs::write(&path, &unit)?;
-    println!("wrote {}", path.display());
+    let path = home().join(".config/systemd/user").join(format!("{APP}.service"));
     if exe.to_string_lossy().contains("/target/") {
         println!("note: the unit points at a cargo build directory ({}); `cargo install --path .` gives a stable path", exe.display());
     }
+    let mut systemctl = |args: &[&str]| -> Result<bool> { Ok(std::process::Command::new("systemctl").args(args).status()?.success()) };
+    install_unit(&path, &unit, no_start, &mut systemctl)?;
     if no_start {
         return Ok(0);
-    }
-    for args in [vec!["--user", "daemon-reload"], vec!["--user", "enable", "--now", APP]] {
-        let st = std::process::Command::new("systemctl").args(&args).status()?;
-        if !st.success() {
-            bail!("systemctl {} failed", args.join(" "));
-        }
     }
     println!("started; logs: journalctl --user -u {APP} -f");
     Ok(0)
