@@ -1598,6 +1598,35 @@ fn podcast_off_changes_no_output() {
 }
 
 #[test]
+fn enclosure_urls_can_stop_depending_on_the_folder_name() {
+    let enclosure = |b: &Blog| {
+        let site = Site::load(&b.dir, LoadOptions::default()).unwrap();
+        site.podcast.as_ref().unwrap().episodes[0].media.as_ref().unwrap().enclosure.clone().unwrap()
+    };
+    let b = podcast_blog("");
+    add_episode(&b, "2024-05-01-pilot", &format!("guid: \"{GUID1}\""), "episode.mp3", MP3);
+    // Without prefix: the URL every existing episode already has, with the folder's name.
+    let before = enclosure(&b);
+    assert!(before.starts_with("https://media.example.com/example.com/pilot-") && before.ends_with(".mp3"), "{before}");
+    let w = crate::check::check(&b.dir, None).unwrap().warnings;
+    assert!(w.iter().any(|w| w.contains("add prefix = \"example.com\" under [podcast.storage]")), "{w:?}");
+    // Pinning the prefix keeps that URL, also after the folder is renamed.
+    let cfg = fs::read_to_string(b.dir.join("blog.toml")).unwrap();
+    fs::write(b.dir.join("blog.toml"), cfg.replace("[podcast.storage]\n", "[podcast.storage]\nprefix = \"example.com\"\n")).unwrap();
+    let renamed = b.dir.with_file_name("renamed.com");
+    fs::rename(&b.dir, &renamed).unwrap();
+    let b = Blog { _tmp: b._tmp, dir: renamed };
+    assert_eq!(enclosure(&b), before);
+    assert!(!crate::check::check(&b.dir, None).unwrap().warnings.iter().any(|w| w.contains("prefix")));
+    // An empty prefix puts files at the top of the host; a bad one is refused.
+    let cfg = fs::read_to_string(b.dir.join("blog.toml")).unwrap();
+    fs::write(b.dir.join("blog.toml"), cfg.replace("prefix = \"example.com\"", "prefix = \"\"")).unwrap();
+    assert!(enclosure(&b).starts_with("https://media.example.com/pilot-"));
+    fs::write(b.dir.join("blog.toml"), cfg.replace("prefix = \"example.com\"", "prefix = \"../up\"")).unwrap();
+    assert!(format!("{:#}", crate::config::Config::load(&b.dir).unwrap_err()).contains("podcast.storage.prefix"));
+}
+
+#[test]
 fn episodes_need_a_media_host_except_in_preview() {
     let b = podcast_blog("");
     let cfg = fs::read_to_string(b.dir.join("blog.toml")).unwrap();
@@ -2040,7 +2069,10 @@ fn setup_careful_path_checks_before_saving_anything() {
     assert!(!fs::read_to_string(dir.join("blog.toml")).unwrap().contains("canary"));
     assert_eq!(crate::storage::load_credentials(conf.path(), "r2", "show").unwrap().secret_access_key, "canary-secret-value");
     let cfg = crate::config::Config::load(&dir).unwrap();
-    assert_eq!(cfg.podcast.storage.unwrap().public_url, "https://media.example.org");
+    let st = cfg.podcast.storage.unwrap();
+    assert_eq!(st.public_url, "https://media.example.org");
+    // Setup pins the folder episode files go in, so renaming the blog folder changes nothing.
+    assert_eq!(st.prefix.as_deref(), Some(dir.file_name().unwrap().to_str().unwrap()));
 }
 
 #[test]

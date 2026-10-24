@@ -215,6 +215,18 @@ pub struct StorageConfig {
     pub region: String,
     /// Public base URL of the media host, e.g. "https://media.example.com" or "https://pub-xxxx.r2.dev".
     pub public_url: String,
+    /// The folder on the host that episode files go in. When it is left out, the blog
+    /// folder's name is used (as before this setting existed), so renaming the folder would
+    /// change every episode URL; `podcast setup` writes it, and `check` suggests it.
+    #[serde(default)]
+    pub prefix: Option<String>,
+}
+
+impl StorageConfig {
+    /// The folder episode files go in on the host (empty: the top level).
+    pub fn prefix_or<'a>(&'a self, blog_name: &'a str) -> &'a str {
+        self.prefix.as_deref().unwrap_or(blog_name)
+    }
 }
 
 /// Optional, off by default: cookie-free GoatCounter page counts, added to built HTML only.
@@ -337,6 +349,14 @@ impl Config {
                 bail!("podcast.storage.public_url must be an https:// URL like \"https://media.example.com\" (got {:?})", st.public_url);
             }
             st.public_url = u.to_string();
+            if let Some(p) = &mut st.prefix {
+                let t = p.trim().trim_matches('/');
+                let bad_segment = t.split('/').any(|seg| seg.is_empty() || seg == "." || seg == "..");
+                if !t.is_empty() && (bad_segment || t.contains('\\')) {
+                    bail!("podcast.storage.prefix must be a folder name like \"myblog\" or \"shows/myblog\" (got {p:?})");
+                }
+                *p = t.to_string();
+            }
             let bucket_ok = |b: &str| (3..=63).contains(&b.len()) && b.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-');
             match st.kind.as_str() {
                 "" => {}

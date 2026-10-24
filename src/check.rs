@@ -56,6 +56,15 @@ pub fn check(blog: &Path, fixtures: Option<String>) -> Result<Report> {
         rep.errors.extend(show.problems.iter().cloned());
         // Problems that also left an episode out are errors here, not warnings too.
         rep.warnings.retain(|w| !show.problems.contains(w));
+        if let Some(st) = &site.cfg.podcast.storage
+            && st.prefix.is_none()
+            && fixtures.is_none()
+        {
+            let name = site.blog_dir.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
+            rep.warnings.push(format!(
+                "podcast.storage.prefix is not set, so episode file URLs are made from this blog folder's name ({name:?}) and renaming the folder would change all of them; add prefix = {name:?} under [podcast.storage] to keep them as they are"
+            ));
+        }
         let feed = show.feed_route.trim_start_matches('/');
         match std::fs::read_to_string(tmp.join(feed)) {
             Ok(xml) => {
