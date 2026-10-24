@@ -199,6 +199,7 @@ Here is what is inside your new blog folder:
   theme/        the design: how your blog looks
   templates/    a sample post and podcast episode to copy (see below)
   AGENTS.md     notes for AI coding helpers (made for you)
+  dates.toml    when folderblog first saw each post without a date (made for you; keep it)
   .blog/        folderblog's own scratch space; leave it alone
 ```
 
@@ -267,7 +268,10 @@ title: `my-summer.md` becomes "My summer".
 
 **The date.** If your file name starts with a date, like `2026-09-30-my-summer.md`, that
 is the post's date. If it doesn't, the date is the moment folderblog first saw the file.
-folderblog writes that moment down and never changes it, even if you edit the post later.
+folderblog writes that moment down in a file called `dates.toml` in your blog folder and
+never changes it, even if you edit the post later. Keep `dates.toml` with your blog: if
+you copy the blog to another computer or keep it in git, that file makes sure undated
+posts keep their dates and web addresses.
 
 **The web address.** The address comes from the file name. `my-summer.md` written in
 September 2026 lives at `/2026/09/my-summer/`. You can change this pattern in
@@ -1245,7 +1249,8 @@ Your website keeps its last good version until you fix it.
 ## How folderblog keeps you safe
 
 - It only **reads** your writing. It never changes your posts or pages. On its own it
-  only writes its own files (`.blog/`, `AGENTS.md`, and sample files in `templates/`).
+  only writes its own files (`.blog/`, `dates.toml`, `AGENTS.md`, and sample files in
+  `templates/`).
   Episodes change only when you publish one, or when an AI helper you connected does.
 - Each build happens in a fresh place. A broken build never touches your live website.
 - It ignores the temporary files that editors and sync programs leave around.

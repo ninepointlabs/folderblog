@@ -118,6 +118,66 @@ fn check_and_fixtures_do_not_persist_state() {
     b.write("posts/x.md", "x");
     Site::load(&b.dir, LoadOptions::default()).unwrap();
     assert!(!b.dir.join(".blog/state.json").exists());
+    assert!(!b.dir.join("dates.toml").exists());
+}
+
+/// Copy a blog folder the way a git clone or a careless sync would: without `.blog/`.
+fn copy_without_state(from: &Path, to: &Path) {
+    for e in walkdir::WalkDir::new(from).into_iter().filter_entry(|e| e.file_name() != ".blog") {
+        let e = e.unwrap();
+        let dest = to.join(e.path().strip_prefix(from).unwrap());
+        if e.file_type().is_dir() {
+            fs::create_dir_all(&dest).unwrap();
+        } else {
+            fs::copy(e.path(), &dest).unwrap();
+        }
+    }
+}
+
+#[test]
+fn undated_post_dates_survive_a_copy_without_dot_blog() {
+    let b = Blog::new("");
+    b.write("posts/no-date.md", "x");
+    let d1 = post(&b.site(), "no-date").date.unwrap().0;
+    let dates = fs::read_to_string(b.dir.join("dates.toml")).unwrap();
+    assert!(dates.contains(&format!("no-date = \"{}\"", d1.to_rfc3339())), "{dates}");
+    std::thread::sleep(std::time::Duration::from_millis(1100));
+    let tmp = tempfile::tempdir().unwrap();
+    copy_without_state(&b.dir, tmp.path());
+    let copy = Site::load(tmp.path(), LoadOptions::default()).unwrap();
+    assert_eq!(post(&copy, "no-date").date.unwrap().0, d1, "a copy must keep the date (and URL)");
+}
+
+#[test]
+fn dates_recorded_by_older_versions_never_change() {
+    // Before dates.toml, first-seen dates lived only in .blog/state.json.
+    let b = Blog::new("");
+    b.write("posts/old.md", "x");
+    b.write("posts/both.md", "x");
+    b.write(".blog/state.json", r#"{"first_seen":{"old":"2025-03-04T10:00:00-05:00","both":"2024-01-02T03:04:05+00:00"}}"#);
+    // A copy elsewhere already wrote a later date for "both" (the bug this fixes).
+    b.write("dates.toml", "both = \"2026-10-01T00:00:00+00:00\"\n");
+    let s = b.site();
+    assert_eq!(post(&s, "old").route, "/2025/03/old/");
+    assert_eq!(post(&s, "both").route, "/2024/01/both/", "the earliest recorded date wins");
+    let dates = fs::read_to_string(b.dir.join("dates.toml")).unwrap();
+    assert!(dates.contains("old = \"2025-03-04T10:00:00-05:00\"") && dates.contains("both = \"2024-01-02T03:04:05+00:00\""), "{dates}");
+    // state.json keeps them too, for an older folderblog.
+    let st = fs::read_to_string(b.dir.join(".blog/state.json")).unwrap();
+    assert!(st.contains("2025-03-04T10:00:00-05:00") && st.contains("2024-01-02T03:04:05+00:00"), "{st}");
+    // A bad hand edit is an error, not a silent new date.
+    b.write("dates.toml", "old = \"last tuesday\"\n");
+    let err = Site::load(&b.dir, LoadOptions::default()).err().unwrap();
+    assert!(format!("{err:#}").contains("dates.toml: old"), "{err:#}");
+}
+
+#[test]
+fn upgrade_moves_recorded_dates_into_dates_toml() {
+    let b = Blog::new("");
+    b.write(".blog/state.json", r#"{"first_seen":{"old":"2025-03-04T10:00:00-05:00"}}"#);
+    let changed = crate::upgrade::upgrade(&b.dir).unwrap();
+    assert!(changed.iter().any(|c| c.contains("dates.toml")), "{changed:?}");
+    assert!(fs::read_to_string(b.dir.join("dates.toml")).unwrap().contains("old = \"2025-03-04T10:00:00-05:00\""));
 }
 
 #[test]

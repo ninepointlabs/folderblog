@@ -1,5 +1,6 @@
 //! Bring an existing blog up to date after folderblog itself is updated. Only adds or refreshes
-//! what the engine owns: missing sample `templates/` and the generated part of `AGENTS.md`.
+//! what the engine owns: missing sample `templates/`, the generated part of `AGENTS.md` and
+//! `dates.toml` (first-seen dates, once kept only in `.blog/`).
 //! Never turns a feature on and never touches `theme/`, blog.toml or content.
 
 use crate::state::STATE_DIR;
@@ -45,6 +46,14 @@ pub fn upgrade(blog_dir: &Path) -> Result<Vec<String>> {
     {
         std::fs::write(&agents, crate::contract::update(Some(&text)))?;
         changed.push("refreshed AGENTS.md".into());
+    }
+    if !blog_dir.join(crate::state::DATES_FILE).exists() {
+        if let Ok(mut st) = crate::state::State::load(blog_dir, true) {
+            st.save()?;
+        }
+        if blog_dir.join(crate::state::DATES_FILE).exists() {
+            changed.push(format!("wrote {} (the dates of posts without a date)", crate::state::DATES_FILE));
+        }
     }
     rec.version = version.into();
     std::fs::create_dir_all(path.parent().unwrap())?;

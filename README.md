@@ -41,7 +41,8 @@ without touching the engine.
 **Writing**
 - Plain Markdown files. Front matter is optional: the title comes from the first heading
   (or the filename), the date from the filename (`2026-09-30-my-post.md`) or from the
-  moment folderblog first saw the file, and it never changes after that.
+  moment folderblog first saw the file, and it never changes after that (that moment is
+  kept in `dates.toml`, so it survives git clones and copies).
 - Folder posts: put `index.md` and its images in `posts/my-trip/` and relative image
   paths just work.
 - Pages (`pages/about.md` → `/about/`), drafts that only appear in preview, a `static/`
@@ -295,7 +296,8 @@ are published. Failed publishes (offline, login expired…) are retried every 5 
 **After updating folderblog**, restart the service (`systemctl --user restart folderblog`).
 On its first start with a new version it brings each blog up to date: it adds sample files
 the blog doesn't have yet (like `templates/`) and refreshes the generated part of
-`AGENTS.md`, and logs what it changed. It never turns a feature on and never changes
+`AGENTS.md`, writes `dates.toml` if the blog doesn't have one yet, and logs what it
+changed. It never turns a feature on and never changes
 `theme/`, `blog.toml` or your posts. A sample file you delete is not put back.
 
 `folderblog status` exits with code 1 when anything is failing, so it also works in
@@ -316,6 +318,7 @@ scripts and status bars.
   theme/        all templates and styles; this decides what the site looks like
   templates/    a sample post and podcast episode with every front matter field, to copy
   AGENTS.md     the theme contract for coding agents (generated)
+  dates.toml    when folderblog first saw each undated post (written for you; keep it)
   .blog/        folderblog's own state; ignore it
 ```
 
@@ -332,8 +335,10 @@ Every few years I try to go fully digital…
 - **Address:** from the filename. `why-notebooks.md` becomes `/2026/09/why-notebooks/`
   by default (change `permalink` in `blog.toml`).
 - **Date:** front matter `date`, else a filename prefix like `2026-09-30-`, else when
-  folderblog first saw the file. That date is recorded and never moves, even if you edit
-  the post or your sync tool touches it.
+  folderblog first saw the file. That date is recorded in `dates.toml` in the blog folder
+  and never moves, even if you edit the post or your sync tool touches it. Keep
+  `dates.toml` with the blog (it isn't ignored by git) so a clone or copy gives undated
+  posts the same addresses.
 - **Excerpt:** everything before a `<!--more-->` line, else the first paragraph.
 
 **Optional front matter** (YAML between `---` or TOML between `+++`):
@@ -744,8 +749,8 @@ restarts on the new version: `systemctl --user restart folderblog`. Or run
 ## How it stays safe
 
 - It never modifies your posts or pages, so editors with the file open never complain.
-  On its own it writes only its own files: `.blog/`, the generated part of `AGENTS.md`
-  and missing samples in `templates/`. Commands you run on purpose (`gallery on`,
+  On its own it writes only its own files: `.blog/`, `dates.toml`, the generated part of
+  `AGENTS.md` and missing samples in `templates/`. Commands you run on purpose (`gallery on`,
   `podcast on`, `podcast setup`) also change `blog.toml` and add their folders and theme
   templates, never overwriting yours. Episode files change only through `folderblog
   podcast publish` and the MCP tools, which write nothing outside `podcast/`.

@@ -76,7 +76,7 @@ up back at a cheap A5 notebook…</pre>
     <div class="rules-out">
       <div class="rule"><b>Title</b><span>“Why I keep a paper notebook”</span><small>from the first heading, which is removed from the body</small></div>
       <div class="rule"><b>Address</b><span class="mono">/2026/09/why-i-keep-a-notebook/</span><small>from the file name (a date prefix sets the date)</small></div>
-      <div class="rule"><b>Date</b><span>the moment folderblog first saw it</span><small>recorded once, so editing or syncing never moves it</small></div>
+      <div class="rule"><b>Date</b><span>the moment folderblog first saw it</span><small>recorded once in <code>dates.toml</code>, so editing, syncing or copying never moves it</small></div>
       <div class="rule"><b>Front matter</b><span>optional</span><small>add title, date, tags or any key your theme wants</small></div>
     </div>
   </div>
@@ -174,7 +174,7 @@ no broken internal links</span>
   <div class="wrap-narrow">
     <p class="kicker">Questions</p>
     <h2>Good questions</h2>
-    <details><summary>Does folderblog ever change my files?</summary><p>Never your posts or pages, so an editor with the file open never complains. Its own state (first-seen dates, the last good build) lives in a hidden <code>.blog/</code> folder. The only other files it writes by itself are ones it owns: the generated part of <code>AGENTS.md</code>, and sample files in <code>templates/</code> that it adds once and never puts back if you delete them.</p></details>
+    <details><summary>Does folderblog ever change my files?</summary><p>Never your posts or pages, so an editor with the file open never complains. Its own state (the last good build, caches) lives in a hidden <code>.blog/</code> folder. The only other files it writes by itself are ones it owns: <code>dates.toml</code> (when it first saw each undated post), the generated part of <code>AGENTS.md</code>, and sample files in <code>templates/</code> that it adds once and never puts back if you delete them.</p></details>
     <details><summary>Can I run a podcast with it?</summary><p>Yes. <code>folderblog podcast on</code>, then one folder per episode in <code>podcast/</code> with its MP3 (or MP4 for video) and show notes. folderblog makes the show and episode pages and a feed for Apple Podcasts, Spotify and the rest. The audio goes to Cloudflare R2, which <code>folderblog podcast setup</code> connects step by step, and the site waits until the upload has worked, so the feed never points at a missing file. An agent can do it all for you through <code>folderblog mcp</code>, and publishes only after you say yes.</p></details>
     <details><summary>Which details can I put at the top of a post?</summary><p>None are needed. To fill some in by hand, copy <code>templates/post.md</code> (or <code>templates/podcast-episode/</code> for an episode) from your blog folder: it has every field folderblog knows, each with a short note.</p></details>
     <details><summary>What happens if I break something?</summary><p>The build fails in its fresh folder, the live site stays exactly as it was, and you get a desktop notification with the file and line. <code>folderblog status</code> shows it too. Fix it and the next save publishes.</p></details>
