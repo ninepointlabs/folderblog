@@ -548,6 +548,12 @@ podcast/
     chapters.json                 optional: the episode's chapters
 ```
 
+**The show's name.** It comes from the heading in `podcast/index.md` (or `title` under
+`[podcast]` in `blog.toml`). With no name of its own, the show uses your blog's name. A
+show with the same name as your blog is called "Your Blog (Podcast)" in its feed, so
+podcast apps and feed readers don't show it as a second copy of your blog. Give the show
+its own name if you don't want the "(Podcast)".
+
 **An episode.** Make a folder inside `podcast/`. Start its name with the date, like
 `2026-10-30-first-episode`. Put the recording inside, and an `index.md` with the notes:
 
