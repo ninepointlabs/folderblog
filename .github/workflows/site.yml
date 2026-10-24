@@ -18,7 +18,7 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  FOLDERBLOG_VERSION: "0.2.7"
+  FOLDERBLOG_VERSION: "0.2.8"
 
 jobs:
   build:
