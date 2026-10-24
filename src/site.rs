@@ -789,7 +789,9 @@ impl Site {
         m.insert("funding", Value::from_serialize(&cfg.funding));
         let Some(show) = &self.podcast else {
             m.insert("enabled", Value::from(false));
-            m.insert("title", Value::from(if cfg.title.is_empty() { self.cfg.title.clone() } else { cfg.title.clone() }));
+            let title = if cfg.title.is_empty() { self.cfg.title.clone() } else { cfg.title.clone() };
+            m.insert("feed_title", Value::from(podcast::feed_title(&title, &self.cfg.title)));
+            m.insert("title", Value::from(title));
             m.insert("description", Value::from(cfg.description.clone()));
             m.insert("intro", Value::from_safe_string(String::new()));
             m.insert("meta", Value::from_serialize(Map::new()));
@@ -865,6 +867,7 @@ impl Site {
             .collect();
         m.insert("enabled", Value::from(true));
         m.insert("title", Value::from(show.title.clone()));
+        m.insert("feed_title", Value::from(show.feed_title.clone()));
         m.insert("description", Value::from(show.description.clone()));
         m.insert("intro", Value::from_safe_string(show.intro_html.clone()));
         m.insert("meta", Value::from_serialize(&show.front));

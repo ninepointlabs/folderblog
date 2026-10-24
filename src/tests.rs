@@ -1602,6 +1602,27 @@ fn several_media_files_need_audio_in_front_matter() {
     assert!(check_errors(&b).is_empty(), "{:?}", check_errors(&b));
 }
 
+#[test]
+fn podcast_feed_and_page_titles_do_not_repeat_the_blog_title() {
+    let (_t, dir) = new_default_blog();
+    enable_podcast(&dir);
+    // No heading in podcast/index.md, so the show takes the blog's title.
+    fs::write(dir.join("podcast/index.md"), "Just a show.\n").unwrap();
+    let site_title = crate::config::Config::load(&dir).unwrap().title;
+    let titles = |dir: &Path| {
+        let r = build::build(dir, None, LoadOptions { persist_state: true, ..Default::default() }, false).unwrap();
+        let feed = fs::read_to_string(r.out_dir.join("podcast/feed.xml")).unwrap();
+        let html = fs::read_to_string(r.out_dir.join("podcast/index.html")).unwrap();
+        let between = |s: &str, a: &str, b: &str| s.split(a).nth(1).unwrap().split(b).next().unwrap().to_string();
+        (between(&feed, "<channel>\n<title>", "</title>"), between(&html, "<title>", "</title>"))
+    };
+    assert_eq!(titles(&dir), (format!("{site_title} (Podcast)"), format!("Podcast · {site_title}")));
+    let mut doc: toml_edit::DocumentMut = fs::read_to_string(dir.join("blog.toml")).unwrap().parse().unwrap();
+    doc["podcast"]["title"] = toml_edit::value("Night Shift Radio");
+    fs::write(dir.join("blog.toml"), doc.to_string()).unwrap();
+    assert_eq!(titles(&dir), ("Night Shift Radio".to_string(), format!("Night Shift Radio · {site_title}")));
+}
+
 // ---------- podcast storage ----------
 
 fn mock_creds() -> crate::storage::Credentials {

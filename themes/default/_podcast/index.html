@@ -1,8 +1,8 @@
 {% extends "_layouts/base.html" %}
-{% block title %}{{ podcast.title }} · {{ site.title }}{% endblock %}
+{% block title %}{% if podcast.title == site.title %}Podcast · {{ site.title }}{% else %}{{ podcast.title }} · {{ site.title }}{% endif %}{% endblock %}
 {% block description %}{{ podcast.description }}{% endblock %}
 {% if podcast.image %}{% set share_image = dict(url=podcast.image, width=none, height=none) %}{% endif %}
-{% block head %}<link rel="alternate" type="application/rss+xml" title="{{ podcast.title ~ ' (Podcast)' if podcast.title == site.title else podcast.title }}" href="{{ podcast.feed_url }}">
+{% block head %}<link rel="alternate" type="application/rss+xml" title="{{ podcast.feed_title }}" href="{{ podcast.feed_url }}">
 <style>{% include "_podcast/podcast.css" %}</style>
 {% endblock %}
 {% block main %}

@@ -185,6 +185,7 @@ pub const GALLERY_TAG_FIELDS: &[Field] = &[
 pub const PODCAST_FIELDS: &[Field] = &[
     f("enabled", "bool", "`[podcast] enabled` from blog.toml. When false `episodes` is empty and no podcast pages or feed are made."),
     f("title", "string", "`[podcast] title`, else the title of `podcast/index.md`, else the site title."),
+    f("feed_title", "string", "The feed's own title: `title`, with \" (Podcast)\" added when it is the same as the site title. Use it for the feed link's `title`."),
     f("description", "string", "`[podcast] description`, else the text of `podcast/index.md`, else the site description."),
     f("url", "string", "URL of the show page, from `[podcast] url` (default `/podcast/`)."),
     f("permalink", "string", "Absolute URL of the show page."),
