@@ -8,7 +8,7 @@ use crate::templates::prefix_base;
 use crate::util::{has_scheme, resolve_relative};
 use anyhow::Result;
 use regex::Regex;
-use std::collections::BTreeSet;
+use std::collections::{BTreeSet, HashSet};
 use std::path::Path;
 
 #[derive(Default)]
@@ -75,6 +75,17 @@ pub fn check(blog: &Path, fixtures: Option<String>) -> Result<Report> {
             ));
         }
     }
+    // Crawlers only read robots.txt at the top of a host, so under a base path it does nothing.
+    if !site.base_path.is_empty() && plan.outputs.iter().any(|o| o.path == crate::feed::ROBOTS_PATH) {
+        let host = &site.cfg.base_url[..site.cfg.base_url.len() - site.base_path.len()];
+        rep.notes.push(format!(
+            "robots.txt is published at {}/{}, but search engines only read {host}/robots.txt; if you look after that site, add `Sitemap: {}/{}` to its robots.txt",
+            site.cfg.base_url,
+            crate::feed::ROBOTS_PATH,
+            site.cfg.base_url,
+            crate::feed::SITEMAP_PATH
+        ));
+    }
     if site.cfg.description.trim().is_empty() {
         rep.warnings.push("blog.toml: description is empty; search engines and link previews use it for pages without a summary".into());
     }
@@ -84,6 +95,11 @@ pub fn check(blog: &Path, fixtures: Option<String>) -> Result<Report> {
 
     // Internal links.
     let attr = Regex::new(r#"(?i)\s(?:href|src|poster)\s*=\s*(?:"([^"]*)"|'([^']*)')"#).unwrap();
+    // Every file a page points at, also through share-image metadata and srcset (for the
+    // unused-image check below). Site paths without the base path.
+    let any_ref = Regex::new(r#"(?i)\s(?:href|src|poster|content|srcset)\s*=\s*(?:"([^"]*)"|'([^']*)')"#).unwrap();
+    let origin = site.cfg.base_url[..site.cfg.base_url.len() - site.base_path.len()].to_string();
+    let mut referenced: HashSet<String> = HashSet::new();
     let mut broken = BTreeSet::new();
     let render_failed = !rep.errors.is_empty();
     if render_failed {
@@ -95,6 +111,19 @@ pub fn check(blog: &Path, fixtures: Option<String>) -> Result<Report> {
         }
         let Ok(html) = std::fs::read_to_string(tmp.join(&o.path)) else { continue };
         let dir = if o.url.ends_with('/') { o.url.clone() } else { o.url.rsplit_once('/').map(|(d, _)| format!("{d}/")).unwrap_or("/".into()) };
+        for c in any_ref.captures_iter(&html) {
+            for v in c.get(1).or(c.get(2)).unwrap().as_str().split(',') {
+                let v = v.split_whitespace().next().unwrap_or("");
+                let v = v.strip_prefix(origin.as_str()).filter(|r| r.starts_with('/')).unwrap_or(v);
+                if v.is_empty() || v.starts_with("//") || has_scheme(v) {
+                    continue;
+                }
+                let abs = if v.starts_with('/') { v.to_string() } else { resolve_relative(&dir, v).unwrap_or_default() };
+                if let Some(inner) = strip_base(&site, &percent_decode(abs.split(['?', '#']).next().unwrap_or(""))) {
+                    referenced.insert(inner);
+                }
+            }
+        }
         for c in attr.captures_iter(&html) {
             let v = c.get(1).or(c.get(2)).unwrap().as_str().trim();
             if v.is_empty() || v.starts_with('#') || v.starts_with("//") || has_scheme(v) || v.contains("{{") || v.contains("${") {
@@ -115,6 +144,28 @@ pub fn check(blog: &Path, fixtures: Option<String>) -> Result<Report> {
         }
     }
     rep.errors.extend(broken);
+
+    // Pictures in posts/ and pages/ are published whether or not anything shows them, so
+    // one left there by mistake is online for anyone who guesses its address.
+    if !render_failed {
+        let unused: Vec<String> = plan
+            .outputs
+            .iter()
+            .filter(|o| matches!(o.content, crate::render::Content::Copy(_)))
+            .filter(|o| o.origin.starts_with("posts/") || o.origin.starts_with("pages/"))
+            .filter(|o| IMAGE_EXTS.iter().any(|e| o.path.to_lowercase().ends_with(e)))
+            .filter(|o| !referenced.contains(&format!("/{}", o.path)))
+            .map(|o| format!("{} ({})", o.origin, strip_base(&site, &o.url).unwrap_or_default()))
+            .collect();
+        if !unused.is_empty() {
+            let more = if unused.len() > 10 { format!(" and {} more", unused.len() - 10) } else { String::new() };
+            rep.warnings.push(format!(
+                "{} picture(s) in posts/ or pages/ that no page shows are still published: {}{more}. Delete them if they shouldn't be online",
+                unused.len(),
+                unused[..unused.len().min(10)].join(", ")
+            ));
+        }
+    }
 
     // Undefined values printed by templates: usually a typo in a variable name.
     if rep.errors.is_empty() {
@@ -149,6 +200,8 @@ pub fn check(blog: &Path, fixtures: Option<String>) -> Result<Report> {
     let _ = std::fs::remove_dir_all(&tmp);
     Ok(rep)
 }
+
+const IMAGE_EXTS: &[&str] = &[".jpg", ".jpeg", ".png", ".gif", ".webp", ".svg", ".avif"];
 
 fn strip_base(site: &Site, path: &str) -> Option<String> {
     if site.base_path.is_empty() {

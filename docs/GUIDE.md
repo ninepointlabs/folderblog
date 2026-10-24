@@ -367,6 +367,9 @@ becomes the web address.
 example, a picture saved as `posts/images/dog.jpg` can be shown with
 `![My dog](images/dog.jpg)` from a post in `posts/`.
 
+**Every picture in `posts/` goes online,** even one no post shows yet. `folderblog check`
+lists the ones nothing shows, so you can delete a picture you didn't mean to share.
+
 ## Pages
 
 Pages are for things that don't change much, like "About me".
@@ -407,7 +410,9 @@ Two names are special:
   `image` of its own (on social media or in a chat). 1200 by 630 pixels works well.
 - `static/robots.txt` tells search engines what to look at. You don't need one: without
   it, folderblog writes one that lets them see everything and tells them where your
-  sitemap is.
+  sitemap is. (If your blog lives in a folder of a bigger site, like
+  `https://example.com/blog/`, search engines only read `https://example.com/robots.txt`,
+  so add the sitemap line to that one instead.)
 
 ## The data folder
 

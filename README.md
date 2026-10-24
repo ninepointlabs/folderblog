@@ -563,7 +563,11 @@ In short:
 - A template can declare `each = "tags"` to make one page per tag (or per year, per
   series, per anything).
 - `/feed.xml` and `/sitemap.xml` belong to the engine. `/robots.txt` too, unless
-  `static/robots.txt` (or a theme file) provides one.
+  `static/robots.txt` (or a theme file) provides one. With a `base_url` path (`/blog`),
+  robots.txt ends up at `/blog/robots.txt`, which crawlers ignore; add
+  `Sitemap: <base_url>/sitemap.xml` to the host's own robots.txt instead (`check` says so).
+- Every file in `posts/` and `pages/` is published, used or not; `check` lists pictures
+  there that no page shows, so a stray one doesn't stay online unnoticed.
 
 ## Configuration (`blog.toml`)
 

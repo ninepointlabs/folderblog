@@ -375,7 +375,8 @@ hidden base theme: if a file is not in `theme/`, it does not exist.
    podcast URLs and the podcast feed, `/feed.xml` (RSS, full content, absolute URLs) and `/sitemap.xml`.
    A theme cannot produce those two paths; link to them with `site.feed_url`.
    The engine also writes a `/robots.txt` that allows everything and names the sitemap,
-   unless `static/robots.txt` or a theme file publishes that path instead.
+   unless `static/robots.txt` or a theme file publishes that path instead. With a `base_url`
+   that has a path, it lands under that path, where crawlers don't look (`check` notes this).
 2. The engine never adds markup, classes, styles or scripts to theme output.
    (Only `folderblog preview` injects a live-reload `<script>`, and only while serving.
    If you set `[analytics] goatcounter` in blog.toml, built pages also get the GoatCounter
