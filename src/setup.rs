@@ -246,9 +246,9 @@ pub fn show(io: &mut Io, cfg: &Config) -> Result<i32> {
     }
     say!(io, "public url: {}", st.public_url);
     if !st.kind.is_empty() {
-        match storage::load_credentials(&io.config_dir, &st.bucket) {
+        match storage::load_credentials(&io.config_dir, &st.kind, &st.bucket) {
             Ok(c) => say!(io, "access key id: {}\nsecret: set", storage::mask(&c.access_key_id)),
-            Err(_) => say!(io, "key: not saved on this computer; run `folderblog podcast setup`"),
+            Err(_) => say!(io, "key: not saved on this computer; {}", storage::key_hint(&io.config_dir, &st.kind, &st.bucket)),
         }
     }
     if st.public_url.contains(".r2.dev") {

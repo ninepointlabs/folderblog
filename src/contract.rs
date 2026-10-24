@@ -319,7 +319,7 @@ pub const CONFIG_KEYS: &[Field] = &[
     f("podcast.storage.public_url", "string", "Public https base URL where episode files are hosted, e.g. `https://media.example.com` or `https://pub-….r2.dev`. Enclosures are `<public_url>/<blog>/<slug>-<hash>.<ext>`. Without it, episodes are left out of the build. Set by `folderblog podcast setup`."),
     f("podcast.storage.type", "string", "`r2` (Cloudflare R2) or `s3` (any S3-compatible host): deploys upload new episode files first and hold the whole deploy if one fails. Leave it out if you upload the files yourself; deploys then only check each file is at `public_url`. Keys are never here: they live in `~/.config/folderblog/storage/<bucket>.json` (mode 0600)."),
     f("podcast.storage.account_id", "string", "r2: the Cloudflare Account ID."),
-    f("podcast.storage.bucket", "string", "r2, s3: the bucket name."),
+    f("podcast.storage.bucket", "string", "r2, s3: the bucket name. Its key (`{\"access_key_id\": …, \"secret_access_key\": …}`) is in `~/.config/folderblog/storage/<bucket>.json`, written by `folderblog podcast setup` for r2 and by hand for s3, or comes from `FOLDERBLOG_STORAGE_KEY_ID` + `FOLDERBLOG_STORAGE_SECRET`."),
     f("podcast.storage.jurisdiction", "string", "r2: `eu` or `fedramp` for buckets made in that jurisdiction."),
     f("podcast.storage.endpoint", "string", "s3: the S3 API endpoint URL."),
     f("podcast.storage.region", "string", "Signing region (default `auto`)."),

@@ -95,8 +95,21 @@ pub fn save_credentials(config_dir: &Path, bucket: &str, c: &Credentials) -> Res
     Ok(path)
 }
 
+/// How to give folderblog a key for `bucket`. `podcast setup` only knows Cloudflare R2, so for
+/// any other S3-compatible host it is the environment variables or the key file by hand.
+pub fn key_hint(config_dir: &Path, kind: &str, bucket: &str) -> String {
+    match kind {
+        "s3" => format!(
+            "set {ENV_KEY_ID} and {ENV_SECRET}, or save the key in {} as {{\"access_key_id\": \"…\", \"secret_access_key\": \"…\"}} (readable only by you: chmod 600)",
+            credentials_path(config_dir, bucket).display()
+        ),
+        _ => "run `folderblog podcast setup` to connect it".into(),
+    }
+}
+
 /// `FOLDERBLOG_STORAGE_KEY_ID` + `FOLDERBLOG_STORAGE_SECRET` (for CI), else the saved file.
-pub fn load_credentials(config_dir: &Path, bucket: &str) -> Result<Credentials> {
+/// `kind` (the storage `type`) only changes what the error says to do.
+pub fn load_credentials(config_dir: &Path, kind: &str, bucket: &str) -> Result<Credentials> {
     if let (Ok(id), Ok(secret)) = (std::env::var(ENV_KEY_ID), std::env::var(ENV_SECRET))
         && !id.is_empty()
         && !secret.is_empty()
@@ -105,8 +118,11 @@ pub fn load_credentials(config_dir: &Path, bucket: &str) -> Result<Credentials> 
     }
     let path = credentials_path(config_dir, bucket);
     let text = std::fs::read_to_string(&path)
-        .map_err(|_| anyhow!("no saved key for the bucket {bucket:?}; run `folderblog podcast setup` to connect it"))?;
-    serde_json::from_str(&text).map_err(|_| anyhow!("{} is damaged; run `folderblog podcast setup` again", path.display()))
+        .map_err(|_| anyhow!("no saved key for the bucket {bucket:?}; {}", key_hint(config_dir, kind, bucket)))?;
+    serde_json::from_str(&text).map_err(|_| match kind {
+        "s3" => anyhow!("{} is damaged; it should be {{\"access_key_id\": \"…\", \"secret_access_key\": \"…\"}}", path.display()),
+        _ => anyhow!("{} is damaged; run `folderblog podcast setup` again", path.display()),
+    })
 }
 
 // ---------- AWS Signature Version 4 ----------
@@ -565,7 +581,7 @@ pub fn sync_for_deploy(blog_dir: &Path, cfg: &crate::config::Config, config_dir:
     let store = match st.kind.as_str() {
         "" => None,
         _ => {
-            let creds = load_credentials(config_dir, &st.bucket).map_err(|e| anyhow!("held: {e:#}"))?;
+            let creds = load_credentials(config_dir, &st.kind, &st.bucket).map_err(|e| anyhow!("held: {e:#}"))?;
             Some(S3Store::from_config(st, creds)?)
         }
     };
@@ -623,10 +639,10 @@ mod tests {
             assert_eq!(std::fs::metadata(&p).unwrap().permissions().mode() & 0o777, 0o600);
             assert_eq!(std::fs::metadata(p.parent().unwrap()).unwrap().permissions().mode() & 0o777, 0o700);
         }
-        assert_eq!(load_credentials(tmp.path(), "show-podcast").unwrap().secret_access_key, "canary-secret");
+        assert_eq!(load_credentials(tmp.path(), "r2", "show-podcast").unwrap().secret_access_key, "canary-secret");
         let shown = format!("{c:?}");
         assert!(!shown.contains("canary") && shown.contains("…WXYZ"), "{shown}");
-        assert!(load_credentials(tmp.path(), "other").unwrap_err().to_string().contains("podcast setup"));
+        assert!(load_credentials(tmp.path(), "r2", "other").unwrap_err().to_string().contains("podcast setup"));
         assert_eq!(mask("ab"), "…");
     }
 
