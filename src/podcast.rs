@@ -623,8 +623,6 @@ pub struct Episode {
 
 pub struct Show {
     pub title: String,
-    /// The feed's channel title: `title`, plus " (Podcast)" when that is just the blog's title.
-    pub feed_title: String,
     pub description: String,
     pub intro_html: String,
     pub front: Map<String, Json>,
@@ -1060,14 +1058,20 @@ pub fn load_show(a: ShowArgs, episodes: Vec<Item>, state: &mut crate::state::Sta
         _ if !out.is_empty() && out.iter().all(|e| e.media.as_ref().is_some_and(|m| m.info.kind.is_video())) => "video",
         _ => "podcast",
     };
-    let feed_title = feed_title(&title, &cfg.title);
-    Ok(Show { title, feed_title, description, intro_html, front, route: pc.url.clone(), feed_route, image, guid, medium, episodes: out, problems })
+    Ok(Show { title, description, intro_html, front, route: pc.url.clone(), feed_route, image, guid, medium, episodes: out, problems })
 }
 
 /// A show named after the blog gets " (Podcast)" in its feed title, so feed readers and
 /// podcast apps don't list it as a second copy of the blog's own feed.
 pub fn feed_title(show_title: &str, site_title: &str) -> String {
     if show_title == site_title { format!("{show_title} (Podcast)") } else { show_title.to_string() }
+}
+
+impl Show {
+    /// The feed's channel title: `title`, plus " (Podcast)" when that is just the blog's title.
+    pub fn feed_title(&self, site_title: &str) -> String {
+        feed_title(&self.title, site_title)
+    }
 }
 
 pub fn duration_hms(secs: f64) -> String {
@@ -1116,7 +1120,8 @@ pub fn rss(site: &crate::site::Site, show: &Show) -> String {
     let mut x = String::new();
     x.push_str("<?xml version=\"1.0\" encoding=\"utf-8\"?>\n");
     x.push_str("<rss version=\"2.0\" xmlns:itunes=\"http://www.itunes.com/dtds/podcast-1.0.dtd\" xmlns:podcast=\"https://podcastindex.org/namespace/1.0\" xmlns:atom=\"http://www.w3.org/2005/Atom\" xmlns:content=\"http://purl.org/rss/1.0/modules/content/\">\n<channel>\n");
-    x.push_str(&format!("<title>{}</title>\n", html_escape(&show.feed_title)));
+    let feed_title = show.feed_title(&cfg.title);
+    x.push_str(&format!("<title>{}</title>\n", html_escape(&feed_title)));
     x.push_str(&format!("<link>{}</link>\n", html_escape(&abs(&show.route))));
     x.push_str(&format!("<description>{}</description>\n", html_escape(&show.description)));
     x.push_str(&format!("<language>{}</language>\n", html_escape(language)));
@@ -1126,7 +1131,7 @@ pub fn rss(site: &crate::site::Site, show: &Show) -> String {
         x.push_str(&format!(
             "<image><url>{}</url><title>{}</title><link>{}</link></image>\n",
             html_escape(&img.url),
-            html_escape(&show.feed_title),
+            html_escape(&feed_title),
             html_escape(&abs(&show.route))
         ));
     }

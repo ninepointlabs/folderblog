@@ -867,7 +867,7 @@ impl Site {
             .collect();
         m.insert("enabled", Value::from(true));
         m.insert("title", Value::from(show.title.clone()));
-        m.insert("feed_title", Value::from(show.feed_title.clone()));
+        m.insert("feed_title", Value::from(show.feed_title(&self.cfg.title)));
         m.insert("description", Value::from(show.description.clone()));
         m.insert("intro", Value::from_safe_string(show.intro_html.clone()));
         m.insert("meta", Value::from_serialize(&show.front));
