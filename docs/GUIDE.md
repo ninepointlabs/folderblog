@@ -549,7 +549,8 @@ What we talked about, and links to the things we mentioned.
 ```
 
 - `guid` is the episode's permanent name tag in podcast apps. Write it once and **never
-  change it**. If you leave it out, `folderblog check` suggests one you can copy in.
+  change it**. If you leave it out, `folderblog check` suggests one you can copy in (it
+  checks draft episodes too, and suggests the same one every time).
 - `season` and `episode` are numbers. Both are optional.
 - `summary` is the short line apps show under the title.
 - `draft: true` keeps the episode to yourself until it's ready (you still see it in preview).

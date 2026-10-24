@@ -423,7 +423,11 @@ fn podcast_cmd(blog: &Path, state: Option<&str>) -> Result<i32> {
         let site = site::Site::load(blog, LoadOptions { drafts: true, ..Default::default() })?;
         let show = site.podcast.as_ref().context("podcast did not load")?;
         let drafts = show.episodes.iter().filter(|e| e.item.src.draft).count();
-        println!("{} episode(s), {drafts} of them draft(s)", show.episodes.len());
+        let left_out = match show.left_out.len() {
+            0 => String::new(),
+            n => format!("; {n} more left out until the problems below are fixed"),
+        };
+        println!("{} episode(s), {drafts} of them draft(s){left_out}", show.episodes.len());
         for e in &show.episodes {
             let date = e.item.date.as_ref().map(|d| d.0.format("%Y-%m-%d").to_string()).unwrap_or_default();
             let len = e.media.as_ref().map(|m| podcast::duration_hms(m.info.duration)).unwrap_or_else(|| "no audio".into());

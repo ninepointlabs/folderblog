@@ -66,6 +66,15 @@ pub fn check(blog: &Path, fixtures: Option<String>) -> Result<Report> {
             Err(e) => rep.errors.push(format!("{feed} was not written: {e}")),
         }
         if fixtures.is_none() {
+            // Draft episodes are left out above. Their problems (a missing guid, say) are
+            // warnings, so they can be fixed before publishing.
+            if let Ok(with_drafts) = Site::load(blog, LoadOptions { drafts: true, ..opts.clone() })
+                && let Some(ds) = &with_drafts.podcast
+            {
+                for p in ds.problems.iter().filter(|p| !show.problems.contains(p)) {
+                    rep.warnings.push(format!("{p} (a draft episode; fix this before you publish it)"));
+                }
+            }
             if let Some(deployed) = crate::podcast::load_snapshot(&site.blog_dir, crate::podcast::DEPLOYED_SNAPSHOT) {
                 rep.errors.extend(crate::podcast::guid_changes(show, &deployed));
             }

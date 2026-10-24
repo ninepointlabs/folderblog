@@ -56,12 +56,13 @@ impl State {
         now
     }
 
-    /// A random episode guid for `key`, handed out once and then kept.
-    pub fn podcast_guid(&mut self, key: &str) -> String {
+    /// The episode guid for `key`: the one handed out before (older versions picked random
+    /// ones, which are kept), else `suggested`, which is then kept.
+    pub fn podcast_guid(&mut self, key: &str, suggested: &str) -> String {
         if let Some(g) = self.podcast_guids.get(key) {
             return g.clone();
         }
-        let g = uuid::Uuid::new_v4().to_string();
+        let g = suggested.to_string();
         self.podcast_guids.insert(key.to_string(), g.clone());
         self.dirty = true;
         g

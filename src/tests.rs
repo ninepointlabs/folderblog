@@ -1556,6 +1556,40 @@ fn episodes_need_a_media_host_except_in_preview() {
 }
 
 #[test]
+fn check_warns_about_draft_episodes_with_the_same_guid_every_time() {
+    let b = podcast_blog("");
+    // The sample episode as copied: a draft with no guid.
+    add_episode(&b, "2024-05-01-pilot", "title: Pilot\ndraft: true", "episode.mp3", MP3);
+    let r1 = crate::check::check(&b.dir, None).unwrap();
+    assert!(r1.errors.is_empty(), "a draft's problems are not errors: {:?}", r1.errors);
+    let w: Vec<&String> = r1.warnings.iter().filter(|w| w.contains("2024-05-01-pilot/index.md: no guid; add `guid: \"")).collect();
+    assert_eq!(w.len(), 1, "{:?}", r1.warnings);
+    assert!(w[0].contains("draft episode"), "{}", w[0]);
+    let r2 = crate::check::check(&b.dir, None).unwrap();
+    assert_eq!(r1.warnings, r2.warnings, "the suggested guid is the same every run");
+    let show_guid = crate::config::Config::load(&b.dir).unwrap().podcast.guid;
+    assert!(w[0].contains(&crate::podcast::suggested_guid(&show_guid, "podcast/2024-05-01-pilot")));
+    // A random guid an older version already handed out (and maybe published) is kept.
+    b.write(".blog/state.json", r#"{"first_seen":{},"podcast_guids":{"podcast/2024-05-01-pilot":"99999999-2222-4333-8444-555555555555"}}"#);
+    assert!(crate::check::check(&b.dir, None).unwrap().warnings.iter().any(|w| w.contains("99999999-2222-4333-8444-555555555555")));
+}
+
+#[test]
+fn podcast_counts_episodes_left_out_and_drafts_need_no_host() {
+    let b = podcast_blog("");
+    let cfg = fs::read_to_string(b.dir.join("blog.toml")).unwrap();
+    fs::write(b.dir.join("blog.toml"), cfg.split("[podcast.storage]").next().unwrap()).unwrap();
+    add_episode(&b, "2024-05-01-pilot", &format!("guid: \"{GUID1}\""), "episode.mp3", MP3);
+    add_episode(&b, "2024-05-02-next", "guid: \"22222222-2222-4333-8444-555555555555\"\ndraft: true", "episode.mp3", MP3);
+    // What `folderblog podcast` loads.
+    let site = Site::load(&b.dir, LoadOptions { drafts: true, ..Default::default() }).unwrap();
+    let show = site.podcast.as_ref().unwrap();
+    assert_eq!(show.left_out, vec!["podcast/2024-05-01-pilot".to_string()]);
+    assert_eq!(show.episodes.iter().map(|e| e.folder.as_str()).collect::<Vec<_>>(), vec!["podcast/2024-05-02-next"]);
+    assert!(!show.problems.iter().any(|p| p.contains("2024-05-02-next")), "a draft needs no host yet: {:?}", show.problems);
+}
+
+#[test]
 fn draft_episodes_only_appear_in_preview() {
     let b = podcast_blog("");
     add_episode(&b, "2024-05-01-pilot", &format!("guid: \"{GUID1}\"\ndraft: true"), "episode.mp3", MP3);

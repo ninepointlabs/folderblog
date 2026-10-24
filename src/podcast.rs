@@ -487,6 +487,13 @@ pub fn check_category(cat: &str, sub: &str) -> Result<(), String> {
     Ok(())
 }
 
+/// The guid offered to an episode folder that has none: a UUIDv5 of the show's guid and the
+/// folder, so `check` suggests the same one every time and on every computer.
+pub fn suggested_guid(show_guid: &str, folder: &str) -> String {
+    let ns = uuid::Uuid::parse_str(show_guid.trim()).unwrap_or(uuid::Uuid::parse_str(GUID_NAMESPACE).unwrap());
+    uuid::Uuid::new_v5(&ns, folder.as_bytes()).to_string()
+}
+
 /// podcast:guid: UUIDv5 of the feed URL without its scheme and trailing slashes.
 pub fn feed_guid(feed_url: &str) -> String {
     let u = feed_url.trim();
@@ -634,6 +641,8 @@ pub struct Show {
     pub medium: &'static str,
     /// Newest first.
     pub episodes: Vec<Episode>,
+    /// Episode folders left out of `episodes` (and the feed) because of a problem.
+    pub left_out: Vec<String>,
     /// Everything `folderblog check` reports as an error.
     pub problems: Vec<String>,
 }
@@ -814,6 +823,7 @@ pub fn load_show(a: ShowArgs, episodes: Vec<Item>, state: &mut crate::state::Sta
     let mut used_cache: HashSet<String> = HashSet::new();
     let mut guids: HashMap<String, String> = HashMap::new();
     let mut out: Vec<Episode> = vec![];
+    let mut left_out: Vec<String> = vec![];
     for item in episodes {
         let bundle = item.src.bundle_dir.clone().expect("episodes are folders");
         let folder = format!("{PODCAST_DIR}/{}", bundle.file_name().unwrap().to_string_lossy());
@@ -857,7 +867,8 @@ pub fn load_show(a: ShowArgs, episodes: Vec<Item>, state: &mut crate::state::Sta
                         let key = format!("{}/{}-{}.{}", a.blog_name, item.slug, &info.sha256[..8], info.kind.ext());
                         let hosted = media_base.as_ref().map(|b| format!("{b}/{key}"));
                         let enclosure = hosted.as_ref().map(|u| if pc.op3 { format!("https://op3.dev/e/{}", u.trim_start_matches("https://")) } else { u.clone() });
-                        if hosted.is_none() && !a.preview {
+                        // A draft needs no host yet: being a draft is what this message suggests.
+                        if hosted.is_none() && !a.preview && !item.src.draft {
                             hard = Some(format!(
                                 "{rel}: there is nowhere to host the audio yet, so this episode is left out; run `folderblog podcast setup`, or add `draft: true` until you are ready"
                             ));
@@ -874,15 +885,17 @@ pub fn load_show(a: ShowArgs, episodes: Vec<Item>, state: &mut crate::state::Sta
             }
         }
 
-        // Identity.
+        // Identity. The guid suggested for an episode without one is made from the show's
+        // guid and the folder, so it is the same every run.
+        let suggested = suggested_guid(&guid, &folder);
         let guid = match front.get("guid") {
             Some(Json::String(g)) if !g.trim().is_empty() => g.trim().to_string(),
             Some(v) => {
                 problems.push(format!("{rel}: guid must be a non-empty string (got {v})"));
-                state.podcast_guid(&folder)
+                state.podcast_guid(&folder, &suggested)
             }
             None => {
-                let g = state.podcast_guid(&folder);
+                let g = state.podcast_guid(&folder, &suggested);
                 problems.push(format!(
                     "{rel}: no guid; add `guid: \"{g}\"` to the front matter so the episode is never re-released if the folder is renamed"
                 ));
@@ -1025,6 +1038,7 @@ pub fn load_show(a: ShowArgs, episodes: Vec<Item>, state: &mut crate::state::Sta
             problems.push(h.clone());
             if !a.preview {
                 warnings.push(h.clone());
+                left_out.push(folder);
                 continue;
             }
         }
@@ -1058,7 +1072,7 @@ pub fn load_show(a: ShowArgs, episodes: Vec<Item>, state: &mut crate::state::Sta
         _ if !out.is_empty() && out.iter().all(|e| e.media.as_ref().is_some_and(|m| m.info.kind.is_video())) => "video",
         _ => "podcast",
     };
-    Ok(Show { title, description, intro_html, front, route: pc.url.clone(), feed_route, image, guid, medium, episodes: out, problems })
+    Ok(Show { title, description, intro_html, front, route: pc.url.clone(), feed_route, image, guid, medium, episodes: out, left_out, problems })
 }
 
 pub fn duration_hms(secs: f64) -> String {
