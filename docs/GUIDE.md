@@ -50,27 +50,27 @@ asked for your password. That is normal.
 **Arch Linux, Omarchy or Manjaro:**
 
 ```sh
-curl -LO https://github.com/ninepointlabs/folderblog/releases/latest/download/folderblog-bin-0.2.8-1-x86_64.pkg.tar.zst
+curl -LO https://github.com/ninepointlabs/folderblog/releases/download/v0.2.8/folderblog-bin-0.2.8-1-x86_64.pkg.tar.zst
 sudo pacman -U folderblog-bin-0.2.8-1-x86_64.pkg.tar.zst
 ```
 
 **Debian, Ubuntu, Pop!_OS or Mint:**
 
 ```sh
-curl -LO https://github.com/ninepointlabs/folderblog/releases/latest/download/folderblog_0.2.8-1_amd64.deb
+curl -LO https://github.com/ninepointlabs/folderblog/releases/download/v0.2.8/folderblog_0.2.8-1_amd64.deb
 sudo apt install ./folderblog_0.2.8-1_amd64.deb
 ```
 
 **Fedora, RHEL or openSUSE:**
 
 ```sh
-sudo dnf install https://github.com/ninepointlabs/folderblog/releases/latest/download/folderblog-0.2.8-1.x86_64.rpm
+sudo dnf install https://github.com/ninepointlabs/folderblog/releases/download/v0.2.8/folderblog-0.2.8-1.x86_64.rpm
 ```
 
 **Any other Linux:**
 
 ```sh
-curl -L https://github.com/ninepointlabs/folderblog/releases/latest/download/folderblog-0.2.8-x86_64-linux.tar.gz | tar xz
+curl -L https://github.com/ninepointlabs/folderblog/releases/download/v0.2.8/folderblog-0.2.8-x86_64-linux.tar.gz | tar xz
 sudo install -Dm755 folderblog-0.2.8-x86_64-linux/folderblog /usr/local/bin/folderblog
 ```
 
@@ -80,9 +80,14 @@ Now check that it worked:
 folderblog --version
 ```
 
-It should say `folderblog 0.2.8` (or a newer number).
+It should say `folderblog 0.2.8`.
 
-**Updating later.** Install the new package the same way, then restart the helper:
+These commands always install version 0.2.8, even after newer versions come out. The
+[releases page](https://github.com/ninepointlabs/folderblog/releases/latest) has the
+newest one: use the same commands with its file names.
+
+**Updating later.** Install the new package the same way (with the new version's file
+name from the releases page), then restart the helper:
 `systemctl --user restart folderblog`. When it starts, it brings your blogs up to date by
 itself: it adds new sample files (like the `templates/` folder) and refreshes `AGENTS.md`.
 It never turns anything on and never changes your design, your settings or your posts. If
@@ -170,6 +175,15 @@ folderblog install-service
 
 Now it runs all the time, even after you restart your computer. You never need to start
 it again.
+
+**If it says "systemctl --user daemon-reload failed"**, your computer has no background
+helper manager for your user. That happens in containers, on some servers, and when you
+connect over SSH. You have two choices:
+
+- Run `folderblog watch` in a terminal window (or in `tmux`, so it keeps going after you
+  close the window). It does the same job as the helper while it runs.
+- Or run `loginctl enable-linger $USER`, log out and in again, and then
+  `folderblog install-service` again.
 
 ## Step 4: Make a blog
 
@@ -686,7 +700,9 @@ cd ~/Blogs/myblog
 folderblog preview
 ```
 
-Then open <http://127.0.0.1:4000> in your web browser. This preview:
+Then open the address it prints in your web browser, normally <http://127.0.0.1:4000>.
+(If your `base_url` has a folder in it, like `/myblog`, the address includes that folder;
+opening the plain address takes you there too.) This preview:
 
 - shows your **drafts** too
 - **reloads by itself** every time you save a file
@@ -746,8 +762,15 @@ GitHub Pages.
 
 ## Publishing somewhere other than GitHub Pages
 
-GitHub Pages is the easiest, but you can publish almost anywhere. Change the
-`[deploy]` part of `blog.toml`.
+GitHub Pages is the easiest, but you can publish almost anywhere. Two changes in
+`blog.toml`:
+
+1. **Set `base_url`** at the top to the address where your website will live, like
+   `base_url = "https://blog.example.com"`. A blog made with `--no-github` (or while you
+   weren't logged in to GitHub) starts with a made-up address like
+   `https://myblog.example.com`, and links in your feed and sitemap would point there.
+   `folderblog check` warns you while it's still the made-up one.
+2. **Change the `[deploy]` part**, in one of these ways.
 
 **To any git place**, like a server or another code website:
 
@@ -769,7 +792,8 @@ command = 'rsync -a --delete "$FOLDERBLOG_OUT/" me@server:/var/www/blog/'
 `$FOLDERBLOG_OUT` is the folder with your finished website in it.
 
 **Nowhere at all:** make a blog with `folderblog new myblog --no-github`, and leave out
-`[deploy]`. folderblog still builds the website into `.blog/public` inside the blog.
+`[deploy]`. folderblog still builds the website into `.blog/public` inside the blog. If
+you copy that folder somewhere by hand later, set `base_url` to that address first.
 
 folderblog only publishes when your website actually changed.
 
@@ -895,7 +919,16 @@ work.
 **The do-it-yourself way.** Designs are made of **templates**: HTML files with little
 `{{ }}` and `{% %}` instructions in them. A few rules:
 
-- `.html` files in `theme/` become pages at the same place.
+- `.html` files in `theme/` become pages at the same place, unless the file starts with
+  a note saying where it goes. The standard `theme/archive.html` starts like this, so it
+  becomes `/archive/` instead of `/archive.html`:
+
+  ```
+  {#---
+  url = "/archive/"
+  ---#}
+  ```
+
 - Files ending in `.jinja` become other kinds of files, like `style.css.jinja` becoming
   `style.css`.
 - Everything else (pictures, styles) is copied as it is.
@@ -911,7 +944,8 @@ These commands help while designing:
 folderblog preview                    # see it live while you work
 folderblog preview --fixtures stress  # try your design with very tricky sample posts
 folderblog check                      # find mistakes, broken links and problems
-folderblog data /2026/09/hello/       # see every fact a page's template can use
+folderblog data                      # list every page of your blog
+folderblog data /archive/             # see every fact that page's template can use
 ```
 
 ## Every command, in detail
@@ -1125,8 +1159,9 @@ folderblog data [ADDRESS] [--blog BLOG] [--drafts] [--fixtures SET]
 ```
 
 - With no address, it lists every page and file on the website, and what made each one.
-- With an address, like `folderblog data /about/`, it prints every fact that page's
-  template can use.
+- With an address, like `folderblog data /archive/`, it prints every fact that page's
+  template can use. Use an address from your own blog (the list above shows them all);
+  one that doesn't exist is an error.
 - `--blog BLOG` picks the blog. (Here the blog comes after `--blog`, because the first
   word is the address.)
 - `--drafts` includes drafts.
@@ -1216,6 +1251,11 @@ finished website folder) and `FOLDERBLOG_BLOG` (the blog's folder).
 
 **Nothing happens when I save.** Type `folderblog status`. If the helper isn't running,
 type `folderblog install-service`.
+
+**`folderblog install-service` fails with "systemctl --user daemon-reload failed".** There
+is no systemd user session (a container, a server, or an SSH login). Run `folderblog
+watch` in a terminal or in `tmux` instead, or run `loginctl enable-linger $USER`, log in
+again and try once more. See "Step 3: Start the helper".
 
 **It says I'm not logged in, or my login expired.** Type `folderblog login github`.
 Everything waiting is published within 5 minutes.

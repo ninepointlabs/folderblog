@@ -142,7 +142,7 @@ no broken internal links</span>
     <h2>Five minutes once. Zero clicks after.</h2>
     <ol class="timeline">
       <li><b>Register a small GitHub App</b> on your own account: Administration, Contents and Pages set to read and write, with Device Flow on.</li>
-      <li><b>Install it</b> on your account.</li>
+      <li><b>Install it</b> on your account, for <b>All repositories</b> (folderblog creates a new repository for each blog).</li>
       <li><b>Log in</b> with <code>folderblog login github</code> and a one-time code.</li>
       <li><b>That's it.</b> <code>folderblog new myblog</code> creates the repository and turns on Pages at the first publish.</li>
     </ol>
@@ -165,7 +165,7 @@ no broken internal links</span>
 <span class="p">❯</span> folderblog install-service
 <span class="p">❯</span> folderblog new myblog
 <span class="p">❯</span> echo "# Hello" &gt; ~/Blogs/myblog/posts/hello.md</pre>
-    <p>Updating later: install the new package the same way, then</p>
+    <p>These commands install {{ params.version }}. Updating later: install the new release's package the same way (its file names are on the <a href="https://github.com/ninepointlabs/folderblog/releases/latest">releases page</a>), then</p>
 <pre><span class="p">❯</span> systemctl --user restart folderblog   <span class="d"># your blogs pick up what's new</span></pre>
   </div>
 </section>
