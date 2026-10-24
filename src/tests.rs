@@ -1056,6 +1056,44 @@ fn share_images_from_front_matter_and_the_site_default() {
 }
 
 #[test]
+fn check_lists_pictures_nothing_shows() {
+    let b = Blog::new("");
+    for f in ["posts/images/used.png", "posts/images/shared.png", "posts/images/stray.png", "pages/old.jpg", "posts/trip/unused.webp", "posts/trip/beach.jpg"] {
+        write_bytes(&b.dir.join(f), b"not really a picture");
+    }
+    b.write("posts/2024-01-01-hi.md", "![x](images/used.png)\n");
+    b.write("posts/trip/index.md", "---\ndate: 2024-02-01\n---\n![beach](beach.jpg)\n");
+    // Linked only from a page, as an absolute URL: still in use.
+    b.write("pages/about.md", "[pic](https://example.com/posts/images/shared.png)\n");
+    let w = crate::check::check(&b.dir, None).unwrap().warnings;
+    let w: Vec<&String> = w.iter().filter(|w| w.contains("no page shows")).collect();
+    assert_eq!(w.len(), 1, "{w:?}");
+    for f in ["posts/images/stray.png", "pages/old.jpg", "posts/trip/unused.webp"] {
+        assert!(w[0].contains(f), "{f}: {}", w[0]);
+    }
+    for f in ["used.png", "shared.png", "beach.jpg"] {
+        assert!(!w[0].contains(f), "{f}: {}", w[0]);
+    }
+    assert!(w[0].starts_with("3 picture(s)"), "{}", w[0]);
+    // Still published: removing them would break links from elsewhere.
+    b.build().unwrap();
+    assert!(build::public_dir(&b.dir).join("posts/images/stray.png").exists());
+}
+
+#[test]
+fn check_notes_that_robots_txt_under_a_base_path_is_not_read() {
+    let b = Blog::new("");
+    assert!(!crate::check::check(&b.dir, None).unwrap().notes.iter().any(|n| n.contains("robots.txt")));
+    let cfg = fs::read_to_string(b.dir.join("blog.toml")).unwrap().replace("https://example.com", "https://example.com/blog");
+    fs::write(b.dir.join("blog.toml"), cfg).unwrap();
+    let notes = crate::check::check(&b.dir, None).unwrap().notes;
+    assert!(
+        notes.iter().any(|n| n.contains("https://example.com/blog/robots.txt") && n.contains("only read https://example.com/robots.txt") && n.contains("Sitemap: https://example.com/blog/sitemap.xml")),
+        "{notes:?}"
+    );
+}
+
+#[test]
 fn robots_txt_by_default_unless_the_blog_has_one() {
     let b = Blog::new("");
     b.build().unwrap();
