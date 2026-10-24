@@ -1538,24 +1538,6 @@ fn podcast_off_changes_no_output() {
 }
 
 #[test]
-fn episodes_need_a_media_host_except_in_preview() {
-    let b = podcast_blog("");
-    let cfg = fs::read_to_string(b.dir.join("blog.toml")).unwrap();
-    let cfg = cfg.split("[podcast.storage]").next().unwrap().to_string();
-    fs::write(b.dir.join("blog.toml"), cfg).unwrap();
-    add_episode(&b, "2024-05-01-pilot", &format!("guid: \"{GUID1}\""), "episode.mp3", MP3);
-    let r = build::build(&b.dir, None, LoadOptions { persist_state: true, ..Default::default() }, false).unwrap();
-    assert!(r.warnings.iter().any(|w| w.contains("nowhere to host the audio")), "{:?}", r.warnings);
-    assert!(!b.read_out("podcast/feed.xml").contains("<item>"));
-    assert!(!build::public_dir(&b.dir).join("podcast/pilot/index.html").exists());
-    assert!(check_errors(&b).iter().any(|e| e.contains("nowhere to host the audio")));
-    // Preview plays the local file.
-    let site = Site::load(&b.dir, LoadOptions { drafts: true, local_media: true, ..Default::default() }).unwrap();
-    let ep = &site.podcast.as_ref().unwrap().episodes[0];
-    assert_eq!(ep.media.as_ref().unwrap().url.as_deref(), Some("/__folderblog/media/podcast/2024-05-01-pilot/episode.mp3"));
-}
-
-#[test]
 fn enclosure_urls_can_stop_depending_on_the_folder_name() {
     let enclosure = |b: &Blog| {
         let site = Site::load(&b.dir, LoadOptions::default()).unwrap();
@@ -1582,6 +1564,24 @@ fn enclosure_urls_can_stop_depending_on_the_folder_name() {
     assert!(enclosure(&b).starts_with("https://media.example.com/pilot-"));
     fs::write(b.dir.join("blog.toml"), cfg.replace("prefix = \"example.com\"", "prefix = \"../up\"")).unwrap();
     assert!(format!("{:#}", crate::config::Config::load(&b.dir).unwrap_err()).contains("podcast.storage.prefix"));
+}
+
+#[test]
+fn episodes_need_a_media_host_except_in_preview() {
+    let b = podcast_blog("");
+    let cfg = fs::read_to_string(b.dir.join("blog.toml")).unwrap();
+    let cfg = cfg.split("[podcast.storage]").next().unwrap().to_string();
+    fs::write(b.dir.join("blog.toml"), cfg).unwrap();
+    add_episode(&b, "2024-05-01-pilot", &format!("guid: \"{GUID1}\""), "episode.mp3", MP3);
+    let r = build::build(&b.dir, None, LoadOptions { persist_state: true, ..Default::default() }, false).unwrap();
+    assert!(r.warnings.iter().any(|w| w.contains("nowhere to host the audio")), "{:?}", r.warnings);
+    assert!(!b.read_out("podcast/feed.xml").contains("<item>"));
+    assert!(!build::public_dir(&b.dir).join("podcast/pilot/index.html").exists());
+    assert!(check_errors(&b).iter().any(|e| e.contains("nowhere to host the audio")));
+    // Preview plays the local file.
+    let site = Site::load(&b.dir, LoadOptions { drafts: true, local_media: true, ..Default::default() }).unwrap();
+    let ep = &site.podcast.as_ref().unwrap().episodes[0];
+    assert_eq!(ep.media.as_ref().unwrap().url.as_deref(), Some("/__folderblog/media/podcast/2024-05-01-pilot/episode.mp3"));
 }
 
 #[test]
