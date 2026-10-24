@@ -669,8 +669,10 @@ show is online, you can also paste the feed address into
 [podba.se/validate](https://podba.se/validate/).
 
 **Telling podcast apps.** Your feed's address is `https://<your blog>/podcast/feed.xml`
-(`folderblog podcast` shows it). Submit that address once to Apple Podcasts Connect,
-Spotify for Creators and the Podcast Index; after that, new episodes show up by themselves.
+(`folderblog podcast` shows it). Your podcast page shows it too, in a **Subscribe** box
+near the top, ready for listeners to copy. Submit that address once to Apple Podcasts
+Connect, Spotify for Creators and the Podcast Index; after that, new episodes show up by
+themselves.
 
 **Turning it off.** `folderblog podcast off` hides the podcast. Your episodes stay safe in
 the folder.

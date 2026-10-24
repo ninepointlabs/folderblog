@@ -1,7 +1,10 @@
 .podcast-head { display: flex; gap: 1.5rem; align-items: flex-start; margin-bottom: 2.5rem; }
 .podcast-art { flex: 0 0 auto; width: 160px; height: 160px; border-radius: 6px; object-fit: cover; }
 .podcast-intro { color: var(--muted); }
-.podcast-subscribe { font-size: .92rem; }
+.podcast-subscribe { margin-top: 1.2rem; padding: .9rem 1rem; border: 1px solid var(--rule, #ddd); border-radius: 6px; font-size: .92rem; }
+.podcast-subscribe h2 { margin: 0 0 .3rem; font-size: 1.05rem; }
+.podcast-subscribe p { margin: .3rem 0; }
+.podcast-feed-url { display: block; padding: .4rem .5rem; overflow-wrap: anywhere; user-select: all; -webkit-user-select: all; }
 .episode-list { list-style: none; padding: 0; }
 .episode-summary { margin-bottom: 2.2rem; }
 .episode-summary h2 { margin: 0 0 .2rem; font-size: 1.35rem; }
