@@ -2099,23 +2099,6 @@ fn mcp_publish_needs_confirm_then_uploads_and_deploys() {
 }
 
 #[test]
-fn a_held_publish_says_who_retries_it() {
-    let mock = crate::mock_s3::Mock::start(mock_creds());
-    let (b, conf) = storage_blog(&mock);
-    let ctx = mcp_ctx(&b, conf.path());
-    add_episode(&b, "2024-05-01-pilot", &format!("guid: \"{GUID1}\"\ndraft: true\ntitle: Pilot"), "episode.mp3", MP3);
-    mock.state.lock().unwrap().fail_puts = Some(503);
-    let e = format!("{:#}", crate::mcp::publish(&ctx, &b.dir, "pilot").unwrap_err());
-    assert!(e.contains("marked published (draft: false") && e.contains("held:"), "{e}");
-    assert!(e.contains(&crate::watch::retry_note(&b.dir, crate::watch::service_running())), "{e}");
-    assert!(!e.contains("retried automatically") && !e.contains("will be tried again"), "{e}");
-    // Only a running service is promised to retry.
-    let off = crate::watch::retry_note(&b.dir, false);
-    assert!(off.contains("Nothing tries it again") && off.contains(&format!("folderblog deploy {}", b.dir.display())), "{off}");
-    assert!(crate::watch::retry_note(&b.dir, true).contains("every 5 minutes"));
-}
-
-#[test]
 fn mcp_publish_refuses_problems_and_respects_mcp_publish_false() {
     let mock = crate::mock_s3::Mock::start(mock_creds());
     let (b, conf) = storage_blog(&mock);
@@ -2131,6 +2114,23 @@ fn mcp_publish_refuses_problems_and_respects_mcp_publish_false() {
     let r = crate::mcp::publish_episode(&ctx, &args).unwrap();
     assert_eq!(r["published"], false);
     assert!(r["command"].as_str().unwrap().starts_with("folderblog podcast publish --episode pilot "), "{r}");
+}
+
+#[test]
+fn a_held_publish_says_who_retries_it() {
+    let mock = crate::mock_s3::Mock::start(mock_creds());
+    let (b, conf) = storage_blog(&mock);
+    let ctx = mcp_ctx(&b, conf.path());
+    add_episode(&b, "2024-05-01-pilot", &format!("guid: \"{GUID1}\"\ndraft: true\ntitle: Pilot"), "episode.mp3", MP3);
+    mock.state.lock().unwrap().fail_puts = Some(503);
+    let e = format!("{:#}", crate::mcp::publish(&ctx, &b.dir, "pilot").unwrap_err());
+    assert!(e.contains("marked published (draft: false") && e.contains("held:"), "{e}");
+    assert!(e.contains(&crate::watch::retry_note(&b.dir, crate::watch::service_running())), "{e}");
+    assert!(!e.contains("retried automatically") && !e.contains("will be tried again"), "{e}");
+    // Only a running service is promised to retry.
+    let off = crate::watch::retry_note(&b.dir, false);
+    assert!(off.contains("Nothing tries it again") && off.contains(&format!("folderblog deploy {}", b.dir.display())), "{off}");
+    assert!(crate::watch::retry_note(&b.dir, true).contains("every 5 minutes"));
 }
 
 #[test]
