@@ -2172,6 +2172,44 @@ fn mcp_publish_needs_confirm_then_uploads_and_deploys() {
 }
 
 #[test]
+fn publishing_changes_only_the_draft_line() {
+    let mock = crate::mock_s3::Mock::start(mock_creds());
+    let (b, conf) = storage_blog(&mock);
+    let ctx = mcp_ctx(&b, conf.path());
+    // The sample episode, as the README says to use it: copied, with a guid and an MP3.
+    let template = crate::fixtures::template_files().into_iter().find(|(rel, _)| rel == "templates/podcast-episode/index.md").unwrap().1;
+    let template = String::from_utf8(template.to_vec()).unwrap();
+    let before = template.replace("# guid: \"paste the one folderblog check gives you\"", &format!("guid: \"{GUID1}\""));
+    assert!(before.contains("\ndraft: true\n") && before.contains(GUID1));
+    b.write("podcast/2024-05-01-pilot/index.md", &before);
+    write_bytes(&b.dir.join("podcast/2024-05-01-pilot/episode.mp3"), MP3);
+    let path = b.dir.join("podcast/2024-05-01-pilot/index.md");
+    // A problem: publishing is refused and the file is back exactly as it was.
+    b.write("podcast/2024-05-01-pilot/chapters.json", "{}");
+    let e = format!("{:#}", crate::mcp::publish(&ctx, &b.dir, "pilot").unwrap_err());
+    assert!(e.contains("draft again"), "{e}");
+    assert_eq!(fs::read_to_string(&path).unwrap(), before);
+    fs::remove_file(b.dir.join("podcast/2024-05-01-pilot/chapters.json")).unwrap();
+    crate::mcp::publish(&ctx, &b.dir, "pilot").unwrap();
+    assert_eq!(fs::read_to_string(&path).unwrap(), before.replace("\ndraft: true\n", "\ndraft: false\n"), "only the draft line changes");
+    assert!(b.read_out("podcast/feed.xml").contains(GUID1));
+}
+
+#[test]
+fn set_draft_false_keeps_everything_else() {
+    use crate::mcp::set_draft_false;
+    // YAML and TOML, a trailing comment, CRLF line endings.
+    assert_eq!(set_draft_false("---\n# note\ntitle: x\ndraft: true  # until ready\n---\nbody draft: true\n").unwrap(), "---\n# note\ntitle: x\ndraft: false  # until ready\n---\nbody draft: true\n");
+    assert_eq!(set_draft_false("+++\ntitle = \"x\"\ndraft = true\n+++\nbody\n").unwrap(), "+++\ntitle = \"x\"\ndraft = false\n+++\nbody\n");
+    assert_eq!(set_draft_false("---\r\ndraft: true\r\ntitle: x\r\n---\r\nbody\r\n").unwrap(), "---\r\ndraft: false\r\ntitle: x\r\n---\r\nbody\r\n");
+    // Nothing to change: not a draft, or no front matter at all.
+    assert_eq!(set_draft_false("---\ntitle: x\n---\nbody\n").unwrap(), "---\ntitle: x\n---\nbody\n");
+    assert_eq!(set_draft_false("just notes\n").unwrap(), "just notes\n");
+    // A draft flag it can't find on its own line is an error, not a rewrite.
+    assert!(set_draft_false("---\n{title: x, draft: true}\n---\nbody\n").is_err());
+}
+
+#[test]
 fn mcp_publish_refuses_problems_and_respects_mcp_publish_false() {
     let mock = crate::mock_s3::Mock::start(mock_creds());
     let (b, conf) = storage_blog(&mock);

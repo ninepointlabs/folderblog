@@ -504,7 +504,8 @@ podcast/
    change it) and names anything else that needs fixing. `folderblog preview` plays the
    episode locally.
 4. Remove `draft: true`, or run `folderblog podcast publish --episode first-episode`.
-   folderblog uploads the audio, checks it is online, then publishes the site and feed.
+   That changes only the `draft:` line to `draft: false` (your notes and comments stay),
+   uploads the audio, checks it is online, then publishes the site and feed.
 
 To get the show into Apple Podcasts, Spotify and the others, submit the feed URL that
 `folderblog podcast` prints (`https://<your site>/podcast/feed.xml`) once.
@@ -527,7 +528,7 @@ server calls no AI itself, never returns secrets, and only writes inside `<blog>
 | `update_episode` | Changes front matter or notes, adds a transcript; strict validation | yes |
 | `set_chapters` | Writes a valid `chapters.json` | yes |
 | `validate` | `folderblog check` plus the podcast rules, drafts included | no |
-| `publish_episode` | Needs `confirm: true` (marked `destructiveHint`): sets `draft: false`, uploads, deploys, checks the hosted file, returns the episode and feed URLs | yes, public |
+| `publish_episode` | Needs `confirm: true` (marked `destructiveHint`): sets `draft: false` (only that line of `index.md` changes), uploads, deploys, checks the hosted file, returns the episode and feed URLs | yes, public |
 
 Every tool takes `blog`: a path, or a blog's name under `~/Blogs` (`--root` or
 `FOLDERBLOG_ROOT` changes it). With `[podcast] mcp_publish = false`, `publish_episode`
