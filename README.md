@@ -455,8 +455,10 @@ podcast/
 - Size, duration and type are read from the file (and cached in `.blog/`); you never
   write them by hand. Only MP3 and MP4 are accepted; anything else gets a clear message.
 - Audio is never copied into the built site. Enclosures point at
-  `[podcast.storage] public_url` as `<public_url>/<blog>/<slug>-<hash>.mp3`, so an edited
-  file gets a new URL. Until that is set, episodes are left out of the build. `folderblog
+  `[podcast.storage] public_url` as `<public_url>/<prefix>/<slug>-<hash>.mp3`, so an edited
+  file gets a new URL. `prefix` (under `[podcast.storage]`; `podcast setup` sets it) is the
+  folder on the host; left out, it is the blog folder's name, so renaming the folder would
+  change every episode URL. `folderblog check` suggests pinning it. Until that is set, episodes are left out of the build. `folderblog
   preview` plays the local file.
 - `folderblog podcast setup` connects Cloudflare R2 step by step, even for someone with no
   Cloudflare account yet: sign-up, turning on R2 (free up to 10 GB a month, but Cloudflare
@@ -612,6 +614,7 @@ type = "r2"                                      # set by `folderblog podcast se
 account_id = "..."
 bucket = "myblog-podcast"
 public_url = "https://media.example.com"         # where episode files are hosted
+prefix = "myblog"                                # folder on the host for episode files
 
 # Optional, off by default. See "Analytics" below.
 # [analytics]

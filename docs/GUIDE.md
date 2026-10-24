@@ -635,6 +635,12 @@ Cloudflare in the same account (if your domain is somewhere else, such as Porkbu
 means moving its nameservers to Cloudflare first). You can switch later by running setup
 again: podcast apps keep following the show, because its `guid` never changes.
 
+**Renaming your blog folder.** Episode files live in a folder on the audio host, named in
+`blog.toml` as `prefix` under `[podcast.storage]` (setup fills it in). Blogs set up with an
+older folderblog may not have that line; then the folder is named after your blog folder,
+and renaming the blog folder would give every episode a new address. `folderblog check`
+reminds you to add the line, with the right name already filled in.
+
 **Where your keys go.** The key folderblog needs is saved in
 `~/.config/folderblog/storage/<bucket>.json`, which only you can read. It is never put in
 `blog.toml`, your blog folder or git. `folderblog podcast setup --show` shows what is set

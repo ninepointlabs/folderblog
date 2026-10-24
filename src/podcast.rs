@@ -854,7 +854,9 @@ pub fn load_show(a: ShowArgs, episodes: Vec<Item>, state: &mut crate::state::Sta
                                 limit / 1_000_000 / 2
                             ));
                         }
-                        let key = format!("{}/{}-{}.{}", a.blog_name, item.slug, &info.sha256[..8], info.kind.ext());
+                        let prefix = pc.storage.as_ref().map(|s| s.prefix_or(a.blog_name)).unwrap_or(a.blog_name);
+                        let object = format!("{}-{}.{}", item.slug, &info.sha256[..8], info.kind.ext());
+                        let key = if prefix.is_empty() { object } else { format!("{prefix}/{object}") };
                         let hosted = media_base.as_ref().map(|b| format!("{b}/{key}"));
                         let enclosure = hosted.as_ref().map(|u| if pc.op3 { format!("https://op3.dev/e/{}", u.trim_start_matches("https://")) } else { u.clone() });
                         if hosted.is_none() && !a.preview {

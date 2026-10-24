@@ -218,6 +218,11 @@ fn write_storage(blog: &Path, kind: &str, account_id: &str, bucket: &str, jurisd
         st["jurisdiction"] = toml_edit::value(jurisdiction);
     }
     st["public_url"] = toml_edit::value(public_url);
+    // Pin the folder episode files go in to today's blog folder name (what was used before
+    // this was a setting), so existing episodes keep their URLs and a rename changes nothing.
+    if st.get("prefix").is_none() {
+        st["prefix"] = toml_edit::value(blog.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default());
+    }
     let out = doc.to_string();
     Config::parse(&out).context("blog.toml would not parse after the change; edit [podcast.storage] by hand")?;
     std::fs::write(&path, out)?;
