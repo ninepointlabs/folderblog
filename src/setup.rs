@@ -192,7 +192,9 @@ pub fn verify(io: &mut Io, store: &S3Store) -> Result<()> {
     };
     let public_fix = "The bucket isn't public at that address yet. In the Cloudflare dashboard, open the bucket, then Settings: turn on the Public Development URL (r2.dev), or connect your custom domain. Then run setup again.";
     let public = step(io, &format!("download it from {url}"), public, public_fix);
-    let del = step(io, "remove the test file", store.delete(&key), "");
+    // Setup never comes back for it, so say where it is.
+    let leftover = format!("The test file {key} is still in the bucket; you can delete it in your storage dashboard.");
+    let del = step(io, "remove the test file", store.delete(&key), &leftover);
     public.and(del)
 }
 

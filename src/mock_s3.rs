@@ -24,6 +24,8 @@ pub struct State {
     pub requests: Vec<Req>,
     /// Answer PUTs with this status instead of storing.
     pub fail_puts: Option<u16>,
+    /// Answer object DELETEs with this status instead of deleting.
+    pub fail_deletes: Option<u16>,
     /// Store objects shorter than sent (to test HEAD checks).
     pub truncate: bool,
     /// Answer every HEAD as compressed, so the client never sees a Content-Length.
@@ -222,10 +224,13 @@ fn handle(
             Some(v) => (200, v.clone(), vec![]),
             None => (404, b"<Error><Code>NoSuchKey</Code></Error>".to_vec(), vec![]),
         },
-        "DELETE" => {
-            s.objects.remove(&key);
-            (204, vec![], vec![])
-        }
+        "DELETE" => match s.fail_deletes {
+            Some(code) => (code, b"<Error><Code>InternalError</Code></Error>".to_vec(), vec![]),
+            None => {
+                s.objects.remove(&key);
+                (204, vec![], vec![])
+            }
+        },
         _ => (400, vec![], vec![]),
     }
 }

@@ -1727,7 +1727,7 @@ fn large_files_go_up_in_signed_parts() {
     // A failed part aborts the upload.
     mock.state.lock().unwrap().fail_puts = Some(503);
     let e = store.put("b/big.mp3", &f, "audio/mpeg").unwrap_err().to_string();
-    assert!(e.contains("part 1 of 4") && e.contains("tried again"), "{e}");
+    assert!(e.contains("part 1 of 4") && e.contains("try again in a few minutes") && !e.contains("will be tried"), "{e}");
     assert!(mock.requests().iter().any(|r| r.method == "DELETE" && r.query.contains("uploadId")));
     // Wrong keys are refused, and the error says what to do.
     let bad = crate::storage::S3Store::new(&mock.url, "show", "auto", crate::storage::Credentials { access_key_id: "AKIDMOCK1234".into(), secret_access_key: "wrong".into() }, "");
@@ -1779,6 +1779,14 @@ fn a_head_reply_without_a_length_still_means_the_file_is_there() {
     crate::setup::verify(&mut io, &store).unwrap_or_else(|e| panic!("{e:#}\n{}", String::from_utf8_lossy(&out)));
     let text = String::from_utf8_lossy(&out).to_string();
     assert!(text.contains("ok    find it again") && !text.contains("FAIL"), "{text}");
+    // A failed clean-up isn't promised a retry that never comes; it says what is left behind.
+    mock.state.lock().unwrap().fail_deletes = Some(500);
+    let mut out = vec![];
+    let mut io = setup_io(&mut input, &mut out, &mut hidden, &mut opened, &mock, conf.path(), &public_get);
+    assert!(crate::setup::verify(&mut io, &store).is_err());
+    let text = String::from_utf8_lossy(&out).to_string();
+    assert!(text.contains("FAIL  remove the test file") && text.contains("is still in the bucket") && !text.contains("tried again"), "{text}");
+    mock.state.lock().unwrap().fail_deletes = None;
 
     // And a deploy's skip-if-uploaded check doesn't hold the site or re-upload.
     let (b, conf) = storage_blog(&mock);
@@ -2088,6 +2096,23 @@ fn mcp_publish_needs_confirm_then_uploads_and_deploys() {
     for out in [r.to_string(), status] {
         assert!(!out.contains("canary-secret-value"));
     }
+}
+
+#[test]
+fn a_held_publish_says_who_retries_it() {
+    let mock = crate::mock_s3::Mock::start(mock_creds());
+    let (b, conf) = storage_blog(&mock);
+    let ctx = mcp_ctx(&b, conf.path());
+    add_episode(&b, "2024-05-01-pilot", &format!("guid: \"{GUID1}\"\ndraft: true\ntitle: Pilot"), "episode.mp3", MP3);
+    mock.state.lock().unwrap().fail_puts = Some(503);
+    let e = format!("{:#}", crate::mcp::publish(&ctx, &b.dir, "pilot").unwrap_err());
+    assert!(e.contains("marked published (draft: false") && e.contains("held:"), "{e}");
+    assert!(e.contains(&crate::watch::retry_note(&b.dir, crate::watch::service_running())), "{e}");
+    assert!(!e.contains("retried automatically") && !e.contains("will be tried again"), "{e}");
+    // Only a running service is promised to retry.
+    let off = crate::watch::retry_note(&b.dir, false);
+    assert!(off.contains("Nothing tries it again") && off.contains(&format!("folderblog deploy {}", b.dir.display())), "{off}");
+    assert!(crate::watch::retry_note(&b.dir, true).contains("every 5 minutes"));
 }
 
 #[test]

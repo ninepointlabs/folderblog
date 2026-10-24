@@ -229,7 +229,7 @@ fn s3_error(what: &str, status: u16, body: &str, bucket: &str) -> anyhow::Error 
         }
         (_, "AccessDenied") | (403, _) => format!("the key isn't allowed to write to {bucket:?}; give its token Object Read & Write on that bucket"),
         (_, "NoSuchBucket") => format!("there is no bucket called {bucket:?} (EU buckets also need jurisdiction = \"eu\" in [podcast.storage])"),
-        (s, _) if s >= 500 => "the storage service had a problem; it will be tried again".to_string(),
+        (s, _) if s >= 500 => "the storage service had a problem on its side; try again in a few minutes".to_string(),
         _ => tag("Message").unwrap_or_else(|| format!("HTTP {status}")),
     };
     let code = if code.is_empty() { format!("HTTP {status}") } else { format!("{code}, HTTP {status}") };

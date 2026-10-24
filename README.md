@@ -468,7 +468,8 @@ podcast/
   and Cloudflare says it isn't for production, but it's fine to start with.
 - Deploys upload new episode files first (in parts above 100 MB; a manifest in `.blog/`
   skips files already uploaded), then HEAD each one and compare its size. If anything
-  fails, the whole deploy is held and retried, so the feed never points at missing audio.
+  fails, the whole deploy is held (and retried every 5 minutes if the service is running),
+  so the feed never points at missing audio.
   Drafts are never uploaded.
 - Episodes stay on `/podcast/` by default; `in_main_feed = true` (or `in_main_feed: true`
   on one episode) also lists them with the posts and in `/feed.xml`.
