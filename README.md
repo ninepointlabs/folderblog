@@ -466,6 +466,15 @@ podcast/
   anything. The key goes to `~/.config/folderblog/storage/<bucket>.json` (mode 0600), never
   into blog.toml or the blog folder. A custom domain is recommended; r2.dev is rate-limited
   and Cloudflare says it isn't for production, but it's fine to start with.
+- Any other S3-compatible host (Backblaze B2, Wasabi, MinIO, AWS S3…) works with
+  `type = "s3"`: set `endpoint` (the S3 API URL), `bucket`, `public_url` and, if the host
+  needs it, `region` under `[podcast.storage]`. `podcast setup` only connects R2, so give
+  the key yourself: either the environment variables `FOLDERBLOG_STORAGE_KEY_ID` and
+  `FOLDERBLOG_STORAGE_SECRET` (handy in CI; for the background service, add them with
+  `systemctl --user edit folderblog`), or a file
+  `~/.config/folderblog/storage/<bucket>.json` containing
+  `{"access_key_id": "…", "secret_access_key": "…"}` (`chmod 600` it). The variables win
+  when both are there.
 - Deploys upload new episode files first (in parts above 100 MB; a manifest in `.blog/`
   skips files already uploaded), then HEAD each one and compare its size. If anything
   fails, the whole deploy is held and retried, so the feed never points at missing audio.

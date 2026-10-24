@@ -1697,9 +1697,21 @@ fn missing_keys_hold_the_deploy_with_a_clear_message() {
     let mock = crate::mock_s3::Mock::start(mock_creds());
     let (b, _conf) = storage_blog(&mock);
     add_episode(&b, "2024-05-01-pilot", &format!("guid: \"{GUID1}\""), "episode.mp3", MP3);
+    // podcast setup only connects R2, so pointing a type "s3" blog at it would be wrong.
     let empty = tempfile::tempdir().unwrap();
-    let e = format!("{:#}", deploy(&b, empty.path()).err().expect("held"));
-    assert!(e.contains("held: no saved key for the bucket \"show\"; run `folderblog podcast setup`"), "{e}");
+    let e = match deploy(&b, empty.path()) {
+        Err(e) => format!("{e:#}"),
+        Ok(_) => panic!("deployed without a key"),
+    };
+    assert!(e.contains("FOLDERBLOG_STORAGE_KEY_ID") && e.contains("FOLDERBLOG_STORAGE_SECRET") && e.contains("storage/show.json"), "{e}");
+    assert!(e.contains("held: no saved key for the bucket \"show\"; set FOLDERBLOG_STORAGE_KEY_ID") && !e.contains("podcast setup"), "{e}");
+    assert!(!b.dir.join("deployed-marker").exists(), "held");
+    // A key file written by hand, in the format the message gives, works.
+    fs::create_dir_all(empty.path().join("storage")).unwrap();
+    fs::write(empty.path().join("storage/show.json"), r#"{"access_key_id": "AKIDMOCK1234", "secret_access_key": "canary-secret-value"}"#).unwrap();
+    assert!(matches!(deploy(&b, empty.path()).unwrap(), crate::deploy::Outcome::Deployed(_)));
+    // R2 still points at setup.
+    assert!(crate::storage::key_hint(empty.path(), "r2", "x").contains("podcast setup"));
 }
 
 #[test]
@@ -1850,7 +1862,7 @@ fn setup_quick_path_makes_the_bucket_and_saves_keys_privately() {
     assert_eq!(cfg.podcast.lightning_address, "show@rizful.com");
     let toml = fs::read_to_string(dir.join("blog.toml")).unwrap();
     assert!(!toml.contains(token) && !toml.contains("secret"), "{toml}");
-    let saved = crate::storage::load_credentials(conf.path(), "example-org-podcast").unwrap();
+    let saved = crate::storage::load_credentials(conf.path(), "r2", "example-org-podcast").unwrap();
     assert_eq!(saved.access_key_id, crate::mock_s3::TOKEN_ID);
     assert!(mock.state.lock().unwrap().objects.is_empty(), "the check cleans up after itself");
     // --show masks the key.
@@ -1890,7 +1902,7 @@ fn setup_careful_path_checks_before_saving_anything() {
     assert!(e.contains("nothing was saved"), "{e}");
     assert!(text.contains("FAIL  download it from https://media.example.org/") && text.contains("Public Development URL"), "{text}");
     assert_eq!(fs::read_to_string(dir.join("blog.toml")).unwrap(), before);
-    assert!(crate::storage::load_credentials(conf.path(), "show").is_err());
+    assert!(crate::storage::load_credentials(conf.path(), "r2", "show").is_err());
     // Public now: saved, with the key file private and the secret only there.
     let public = |u: &str| -> anyhow::Result<(u16, String)> {
         let key = u.rsplit('/').next().unwrap();
@@ -1903,7 +1915,7 @@ fn setup_careful_path_checks_before_saving_anything() {
     crate::setup::run(&dir, opts, &mut io).unwrap();
     assert!(!String::from_utf8_lossy(&out).contains("canary-secret-value"));
     assert!(!fs::read_to_string(dir.join("blog.toml")).unwrap().contains("canary"));
-    assert_eq!(crate::storage::load_credentials(conf.path(), "show").unwrap().secret_access_key, "canary-secret-value");
+    assert_eq!(crate::storage::load_credentials(conf.path(), "r2", "show").unwrap().secret_access_key, "canary-secret-value");
     let cfg = crate::config::Config::load(&dir).unwrap();
     assert_eq!(cfg.podcast.storage.unwrap().public_url, "https://media.example.org");
 }

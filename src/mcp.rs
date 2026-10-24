@@ -238,8 +238,12 @@ pub fn podcast_status(ctx: &Ctx, a: &BlogArgs) -> Result<Json> {
             let key = if st.kind.is_empty() {
                 Json::Null
             } else {
-                match crate::storage::load_credentials(&ctx.config_dir, &st.bucket) {
+                match crate::storage::load_credentials(&ctx.config_dir, &st.kind, &st.bucket) {
                     Ok(c) => json!({ "access_key_id": crate::storage::mask(&c.access_key_id), "secret": "set" }),
+                    Err(_) if st.kind == "s3" => json!(format!(
+                        "missing on this computer; the user needs to {}",
+                        crate::storage::key_hint(&ctx.config_dir, &st.kind, &st.bucket)
+                    )),
                     Err(_) => json!("missing on this computer; ask the user to run `folderblog podcast setup`"),
                 }
             };

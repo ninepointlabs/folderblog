@@ -649,6 +649,27 @@ uploaded once; saving other files doesn't upload them again.
 `public_url = "https://..."` under `[podcast.storage]`; `folderblog podcast` lists each
 episode's file name on the host, and publishing waits until each file is there.
 
+**Another storage service that speaks S3.** Backblaze B2, Wasabi, MinIO, AWS S3 and many
+others work like R2, and folderblog uploads to them for you. `podcast setup` only knows
+Cloudflare, so you write the settings yourself:
+
+```toml
+[podcast.storage]
+type = "s3"
+endpoint = "https://s3.us-west-004.backblazeb2.com"   # the service's S3 address
+bucket = "myblog-podcast"
+region = "us-west-004"                               # if the service asks for one
+public_url = "https://media.example.com"             # where listeners download from
+```
+
+Then give folderblog the bucket's key, one of two ways:
+
+- Save it in `~/.config/folderblog/storage/myblog-podcast.json` (the bucket's name, then
+  `.json`), with only you allowed to read it (`chmod 600`):
+  `{"access_key_id": "...", "secret_access_key": "..."}`
+- Or set `FOLDERBLOG_STORAGE_KEY_ID` and `FOLDERBLOG_STORAGE_SECRET` (see "Special
+  settings for your terminal"). These win if both are there.
+
 **Let an AI helper put it up.** If you use an AI helper such as Claude Code, Cursor or
 Claude Desktop, you can connect it to folderblog (see `folderblog mcp` below). Then you
 can just say "put this up" and point at a recording. The helper looks at the file, makes
@@ -1198,8 +1219,10 @@ These are called **environment variables**. Most people never need them.
 |---|---|
 | `FOLDERBLOG_ROOT` | Use another folder instead of `~/Blogs` |
 | `FOLDERBLOG_NO_NOTIFY` | If set to anything, no pop-up messages |
-| `FOLDERBLOG_CONFIG_DIR` | Where to keep the GitHub login (normally `~/.config/folderblog`) |
+| `FOLDERBLOG_CONFIG_DIR` | Where to keep the GitHub login and storage keys (normally `~/.config/folderblog`) |
 | `FOLDERBLOG_GITHUB_CLIENT_ID` | A Client ID to log in with, instead of `--client-id` |
+| `FOLDERBLOG_STORAGE_KEY_ID` | The access key ID for podcast audio storage (with the next one); used instead of the saved key |
+| `FOLDERBLOG_STORAGE_SECRET` | The secret that goes with `FOLDERBLOG_STORAGE_KEY_ID` |
 
 To make the background helper watch a different folder, type
 `systemctl --user edit folderblog` and add these two lines:
@@ -1208,6 +1231,9 @@ To make the background helper watch a different folder, type
 [Service]
 Environment=FOLDERBLOG_ROOT=/path/to/blogs
 ```
+
+The storage key variables go there the same way
+(`Environment=FOLDERBLOG_STORAGE_KEY_ID=...`), if the helper should use them.
 
 Commands in `[build]` and `type = "command"` publishing also get `FOLDERBLOG_OUT` (the
 finished website folder) and `FOLDERBLOG_BLOG` (the blog's folder).
