@@ -71,8 +71,10 @@ pub fn describe(name: &str, st: &Status) -> String {
             for line in b.error.as_deref().unwrap_or("").lines().take(15) {
                 s.push_str(&format!("             {line}\n"));
             }
-            if let Some(g) = &st.last_good_build {
-                s.push_str(&format!("             last good build {g} is still what is deployed\n"));
+            match (&st.last_good_build, &st.last_good_deploy) {
+                (Some(g), Some(_)) => s.push_str(&format!("             last good build {g}; the site still shows what was last deployed\n")),
+                (Some(g), None) => s.push_str(&format!("             last good build {g} has not been deployed yet\n")),
+                (None, _) => {}
             }
         }
         None => s.push_str("     build   never built\n"),

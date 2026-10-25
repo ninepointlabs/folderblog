@@ -17,7 +17,7 @@ pub struct Cli {
 pub enum Cmd {
     /// Create a new blog folder with the default theme and AGENTS.md (published to GitHub Pages if logged in)
     New {
-        /// Blog name (usually its domain), created under the root; or a path
+        /// Blog name (usually its domain), created under the root; or a full path
         name: String,
         /// The folder that holds your blogs (default: ~/Blogs)
         #[arg(long, env = "FOLDERBLOG_ROOT")]

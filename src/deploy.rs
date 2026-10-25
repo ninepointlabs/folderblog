@@ -208,14 +208,19 @@ impl Target for CommandTarget {
             .output()
             .context("starting deploy command")?;
         if !output.status.success() {
-            bail!(
-                "deploy command failed ({}):\n{}",
-                output.status,
-                tail(&String::from_utf8_lossy(&output.stderr), 20)
-            );
+            bail!("deploy command failed ({}):\n{}", output.status, command_output(&output.stdout, &output.stderr));
         }
         Ok("command succeeded".into())
     }
+}
+
+/// The last lines a failed deploy command printed: stderr, else stdout, else say it printed nothing.
+fn command_output(stdout: &[u8], stderr: &[u8]) -> String {
+    [stderr, stdout]
+        .iter()
+        .map(|b| tail(String::from_utf8_lossy(b).trim(), 20))
+        .find(|t| !t.trim().is_empty())
+        .unwrap_or_else(|| "(the command printed no output)".into())
 }
 
 /// Stable hash of a directory tree (paths and contents).

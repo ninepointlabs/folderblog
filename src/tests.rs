@@ -2582,3 +2582,40 @@ fn default_podcast_page_has_a_subscribe_block_and_a_distinct_feed_title() {
         assert_eq!(titles, vec![site_title.clone(), want], "{titles:?}");
     }
 }
+
+#[test]
+fn new_refuses_relative_names_with_a_slash_or_dotdot() {
+    let root = PathBuf::from("/srv/Blogs");
+    assert_eq!(crate::new_blog_dir("myblog", Some(root.clone())).unwrap(), root.join("myblog"));
+    assert_eq!(crate::new_blog_dir("/tmp/x/myblog", Some(root.clone())).unwrap(), PathBuf::from("/tmp/x/myblog"));
+    for bad in ["../x", "a/b", "./x", "..", ".", "", "a\\b"] {
+        let e = crate::new_blog_dir(bad, Some(root.clone())).unwrap_err().to_string();
+        assert!(e.contains("is not a blog name") && e.contains("/srv/Blogs"), "{bad}: {e}");
+    }
+}
+
+#[test]
+fn status_after_a_failed_build_says_whether_anything_was_deployed() {
+    let failed = crate::status::BuildStatus { time: "t".into(), ok: false, error: Some("boom".into()), ..Default::default() };
+    let mut st = crate::status::Status { build: Some(failed), last_good_build: Some("t0".into()), ..Default::default() };
+    let s = crate::status::describe("b", &st);
+    assert!(s.contains("last good build t0 has not been deployed yet") && !s.contains("still"), "{s}");
+    st.last_good_deploy = Some("t1".into());
+    let s = crate::status::describe("b", &st);
+    assert!(s.contains("the site still shows what was last deployed"), "{s}");
+}
+
+#[test]
+fn a_failed_deploy_command_shows_its_output_or_says_there_was_none() {
+    for (cmd, want) in [
+        ("echo to-out; echo to-err >&2; exit 3", "to-err"),
+        ("echo only-out; exit 3", "only-out"),
+        ("exit 3", "(the command printed no output)"),
+    ] {
+        let b = Blog::new(&format!("[deploy]\ntype = \"command\"\ncommand = '{cmd}'"));
+        b.write("posts/2024-01-01-a.md", "a");
+        b.build().unwrap();
+        let e = format!("{:#}", crate::deploy::deploy(&b.dir, false).err().expect("deploy should fail"));
+        assert!(e.starts_with("deploy command failed (exit status: 3):\n") && e.ends_with(want), "{cmd}: {e}");
+    }
+}

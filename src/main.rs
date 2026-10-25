@@ -68,7 +68,7 @@ fn main() {
 fn run(cli: Cli) -> Result<i32> {
     match cli.cmd {
         Cmd::New { name, root, domain, repo, no_github } => {
-            let dir = if name.contains('/') { PathBuf::from(&name) } else { default_root(root).join(&name) };
+            let dir = new_blog_dir(&name, root)?;
             let base = dir.file_name().context("bad path")?.to_string_lossy().to_string();
             let login = if no_github { None } else { github::load() };
             let gh = login.as_ref().map(|t| (t.login.clone(), github::repo_name(repo.as_deref().unwrap_or(&base))));
@@ -501,6 +501,24 @@ fn dns_help(domain: &str, owner: &str) -> String {
             owner.to_lowercase()
         )
     }
+}
+
+/// Where `new NAME` makes the blog: a plain name goes in the blogs folder, a full path is used
+/// as given. A relative name with a slash or `..` is refused, since it would land outside the
+/// blogs folder, relative to wherever the command happens to run.
+fn new_blog_dir(name: &str, root: Option<PathBuf>) -> Result<PathBuf> {
+    let path = Path::new(name);
+    if path.is_absolute() {
+        return Ok(path.to_path_buf());
+    }
+    if name.is_empty() || name == "." || name == ".." || name.contains(['/', '\\']) {
+        bail!(
+            "`{name}` is not a blog name: use a plain name like `myblog` (made in {}), or a full path like `{}`",
+            default_root(root).display(),
+            home().join("sites").join("myblog").display()
+        );
+    }
+    Ok(default_root(root).join(name))
 }
 
 pub fn new_blog(dir: &Path, github: Option<(&str, &str, Option<&str>)>) -> Result<()> {
