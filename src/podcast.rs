@@ -495,6 +495,25 @@ pub fn suggested_guid(show_guid: &str, folder: &str) -> String {
 }
 
 /// podcast:guid: UUIDv5 of the feed URL without its scheme and trailing slashes.
+/// OP3's prefix, https://op3.dev/setup.
+pub const OP3_PREFIX: &str = "https://op3.dev/e/";
+
+/// The enclosure URL podcast apps download: `url` behind the analytics prefix, if one is set.
+/// As OP3 asks, the URL goes after the prefix without `https://` (an `http://` URL keeps its
+/// scheme), and OP3 also gets the show's guid as `pg=` so it can attribute downloads sooner.
+/// A URL already behind the prefix is left alone. Uploads and size checks use `url` itself.
+pub fn analytics_url(prefix: &str, url: &str, show_guid: &str) -> String {
+    let base = prefix.trim_end_matches('/');
+    if base.is_empty() || url.starts_with(&format!("{base}/")) || url.starts_with(&format!("{base},")) {
+        return url.into();
+    }
+    let target = url.strip_prefix("https://").unwrap_or(url);
+    match prefix == OP3_PREFIX && !show_guid.is_empty() {
+        true => format!("{base},pg={show_guid}/{target}"),
+        false => format!("{prefix}{target}"),
+    }
+}
+
 pub fn feed_guid(feed_url: &str) -> String {
     let u = feed_url.trim();
     let u = u.split_once("://").map(|(_, r)| r).unwrap_or(u).trim_end_matches('/');
@@ -604,7 +623,7 @@ pub struct Media {
     pub key: String,
     /// What the episode page plays: the local file in previews, else the hosted file.
     pub url: Option<String>,
-    /// The feed's enclosure URL (with the OP3 prefix when on). None until a media host is set up.
+    /// The feed's enclosure URL (behind `analytics_prefix` when set). None until a media host is set up.
     pub enclosure: Option<String>,
 }
 
@@ -868,7 +887,7 @@ pub fn load_show(a: ShowArgs, episodes: Vec<Item>, state: &mut crate::state::Sta
                         let object = format!("{}-{}.{}", item.slug, &info.sha256[..8], info.kind.ext());
                         let key = if prefix.is_empty() { object } else { format!("{prefix}/{object}") };
                         let hosted = media_base.as_ref().map(|b| format!("{b}/{key}"));
-                        let enclosure = hosted.as_ref().map(|u| if pc.op3 { format!("https://op3.dev/e/{}", u.trim_start_matches("https://")) } else { u.clone() });
+                        let enclosure = hosted.as_ref().map(|u| analytics_url(&pc.analytics_prefix, u, &guid));
                         // A draft needs no host yet: being a draft is what this message suggests.
                         if hosted.is_none() && !a.preview && !item.src.draft {
                             hard = Some(format!(

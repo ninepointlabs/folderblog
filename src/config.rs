@@ -143,9 +143,12 @@ pub struct PodcastConfig {
     pub funding: Vec<Funding>,
     #[serde(default)]
     pub persons: Vec<Person>,
-    /// Prefix enclosure URLs with https://op3.dev/e/ for open download stats.
+    /// Shorthand for `analytics_prefix = "https://op3.dev/e/"`.
     #[serde(default)]
     pub op3: bool,
+    /// A download-stats prefix for enclosure URLs, e.g. "https://op3.dev/e/". Off when empty.
+    #[serde(default)]
+    pub analytics_prefix: String,
     /// Also list episodes in the main feed and on the home page (front matter `in_main_feed` overrides).
     #[serde(default)]
     pub in_main_feed: bool,
@@ -374,6 +377,26 @@ impl Config {
                     }
                 }
                 other => bail!("podcast.storage.type must be \"r2\" or \"s3\" (got {other:?})"),
+            }
+        }
+        let ap = cfg.podcast.analytics_prefix.trim();
+        if !ap.is_empty() {
+            let host = ap.strip_prefix("https://").unwrap_or("");
+            if host.is_empty() || host.starts_with('/') || !ap.ends_with('/') || ap.contains(|c: char| c.is_whitespace() || "\"'<>`?#\\".contains(c)) {
+                bail!("podcast.analytics_prefix must be an https:// URL ending in /, like \"{}\" (got {:?})", crate::podcast::OP3_PREFIX, cfg.podcast.analytics_prefix);
+            }
+            if cfg.podcast.op3 && ap != crate::podcast::OP3_PREFIX {
+                bail!("podcast.op3 = true and podcast.analytics_prefix = {ap:?} both set a prefix; keep one");
+            }
+        }
+        cfg.podcast.analytics_prefix = match (ap, cfg.podcast.op3) {
+            ("", true) => crate::podcast::OP3_PREFIX.into(),
+            (p, _) => p.into(),
+        };
+        if let Some(st) = &cfg.podcast.storage {
+            let base = cfg.podcast.analytics_prefix.trim_end_matches('/');
+            if !base.is_empty() && st.public_url.starts_with(base) {
+                bail!("podcast.storage.public_url must be where the files really are, without the analytics prefix (got {:?}); folderblog adds {} to the feed itself", st.public_url, cfg.podcast.analytics_prefix);
             }
         }
         let gc = cfg.analytics.goatcounter.trim().trim_end_matches('/');

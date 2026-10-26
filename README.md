@@ -504,7 +504,8 @@ podcast/
 - `folderblog check` is strict about podcasts: required tags, https everywhere, known
   length and duration, real MP3/MP4 data, art size, Apple categories, valid chapters and
   transcripts, and episode guids that are unique and unchanged since the last deploy.
-- `folderblog podcast` lists the episodes, the feed URL and any problems.
+- `folderblog podcast` lists the episodes, the feed URL, whether an analytics prefix is
+  on, and any problems.
 
 **Publishing an episode by hand:**
 
@@ -524,6 +525,31 @@ To get the show into Apple Podcasts, Spotify and the others, submit the feed URL
 `folderblog podcast` prints (`https://<your site>/podcast/feed.xml`) once.
 
 `folderblog podcast off` turns it off again and leaves your episodes where they are.
+
+### Podcast stats with OP3
+
+[OP3](https://op3.dev) is a free, open-source podcast analytics prefix. Turn it on with
+one line (off by default; existing feeds don't change):
+
+```toml
+[podcast]
+analytics_prefix = "https://op3.dev/e/"    # or op3 = true, the same thing
+```
+
+Every enclosure in `/podcast/feed.xml` (and in `/feed.xml` with `in_main_feed`) then goes
+through the prefix in the form OP3 documents on [op3.dev/setup](https://op3.dev/setup):
+the URL without `https://` (an `http://` URL would keep its scheme), with the show's
+`podcast:guid` passed as the optional `pg` argument, e.g.
+`https://op3.dev/e,pg=<guid>/media.example.com/myblog/pilot-1a2b3c4d.mp3`. Uploads, the
+deploy's HEAD size check and the episode page's `<audio>` player use the real URL; OP3
+counts podcast-app downloads, and the page keeps working if the prefix is down. Themes
+that want the prefixed URL can use `episode.audio.enclosure`. Any other prefix service
+works the same way; the prefix must be `https://` and end in `/`, a URL already behind it
+is never prefixed again, and a `public_url` that includes it is refused.
+
+There is nothing to register: OP3 identifies the show from the downloads. After a few
+days, its public stats page is at `https://op3.dev/show/<guid>` (the `guid` in
+`[podcast]`); the form on op3.dev/setup looks a feed up.
 
 ### Let an agent put up episodes (MCP)
 
@@ -645,6 +671,7 @@ category = "Technology"                          # an Apple Podcasts category
 owner_email = "you@example.com"                  # public in the feed
 # lightning_address = "you@rizful.com"           # optional podcast:value tips
 # in_main_feed = false                           # also list episodes with posts
+# analytics_prefix = "https://op3.dev/e/"       # download stats with OP3
 
 [podcast.storage]
 type = "r2"                                      # set by `folderblog podcast setup`

@@ -612,6 +612,8 @@ fn every_documented_config_key_parses() {
             "'eu'".into()
         } else if k.name == "podcast.storage.bucket" {
             "'show-podcast'".into()
+        } else if k.name == "podcast.analytics_prefix" {
+            "'https://op3.dev/e/'".into()
         } else if k.name == "podcast.type" {
             "'serial'".into()
         } else if k.name == "podcast.medium" {
@@ -1665,6 +1667,67 @@ fn enclosure_urls_can_stop_depending_on_the_folder_name() {
 }
 
 #[test]
+fn analytics_prefix_is_off_by_default_and_wraps_only_feed_enclosures() {
+    let b = podcast_blog("in_main_feed = true");
+    add_episode(&b, "2024-05-01-pilot", &format!("guid: \"{GUID1}\""), "episode.mp3", MP3);
+    b.build().unwrap();
+    let feed = b.read_out("podcast/feed.xml");
+    assert!(feed.contains("<enclosure url=\"https://media.example.com/example.com/pilot-"), "{feed}");
+    assert!(!feed.contains("op3.dev"), "off by default: {feed}");
+    assert_eq!(crate::config::Config::load(&b.dir).unwrap().podcast.analytics_prefix, "");
+    let real = b.read_out("podcast/pilot/index.html");
+
+    let cfg = fs::read_to_string(b.dir.join("blog.toml")).unwrap();
+    fs::write(b.dir.join("blog.toml"), cfg.replace("in_main_feed = true", "in_main_feed = true\nanalytics_prefix = \"https://op3.dev/e/\"")).unwrap();
+    b.build().unwrap();
+    let show_guid = crate::config::Config::load(&b.dir).unwrap().podcast.guid;
+    let want = format!("<enclosure url=\"https://op3.dev/e,pg={show_guid}/media.example.com/example.com/pilot-");
+    assert!(b.read_out("podcast/feed.xml").contains(&want), "{}", b.read_out("podcast/feed.xml"));
+    assert!(b.read_out("feed.xml").contains(&want), "the main feed too: {}", b.read_out("feed.xml"));
+    // The episode page's player keeps the real URL.
+    assert_eq!(b.read_out("podcast/pilot/index.html"), real);
+    assert!(check_errors(&b).is_empty(), "{:?}", check_errors(&b));
+
+    // `op3 = true` is the same thing; any other prefix goes in front of the URL without https://.
+    fs::write(b.dir.join("blog.toml"), cfg.replace("in_main_feed = true", "in_main_feed = true\nop3 = true")).unwrap();
+    b.build().unwrap();
+    assert!(b.read_out("podcast/feed.xml").contains(&want));
+    fs::write(b.dir.join("blog.toml"), cfg.replace("in_main_feed = true", "analytics_prefix = \"https://stats.example.net/r/\"")).unwrap();
+    b.build().unwrap();
+    assert!(b.read_out("podcast/feed.xml").contains("<enclosure url=\"https://stats.example.net/r/media.example.com/example.com/pilot-"));
+}
+
+#[test]
+fn analytics_prefix_is_checked_and_never_doubled() {
+    use crate::podcast::{analytics_url, OP3_PREFIX};
+    let g = GUID1;
+    let real = "https://media.example.com/show/a.mp3";
+    assert_eq!(analytics_url("", real, g), real);
+    assert_eq!(analytics_url(OP3_PREFIX, real, g), format!("https://op3.dev/e,pg={g}/media.example.com/show/a.mp3"));
+    assert_eq!(analytics_url(OP3_PREFIX, real, ""), "https://op3.dev/e/media.example.com/show/a.mp3");
+    // OP3 wants the scheme kept only for http targets.
+    assert_eq!(analytics_url(OP3_PREFIX, "http://media.example.com/a.mp3", ""), "https://op3.dev/e/http://media.example.com/a.mp3");
+    for already in [analytics_url(OP3_PREFIX, real, g), analytics_url(OP3_PREFIX, real, ""), "https://op3.dev/e/media.example.com/a.mp3".into()] {
+        assert_eq!(analytics_url(OP3_PREFIX, &already, g), already);
+    }
+    let other = analytics_url("https://stats.example.net/r/", real, g);
+    assert_eq!(analytics_url("https://stats.example.net/r/", &other, g), other);
+
+    let parse = |podcast: &str| crate::config::Config::parse(&format!("title='t'\nbase_url='https://x.com'\n[podcast]\n{podcast}\n")).map(|c| c.podcast.analytics_prefix);
+    assert_eq!(parse("").unwrap(), "");
+    assert_eq!(parse("op3 = true").unwrap(), OP3_PREFIX);
+    assert_eq!(parse("op3 = true\nanalytics_prefix = 'https://op3.dev/e/'").unwrap(), OP3_PREFIX);
+    for bad in ["'http://op3.dev/e/'", "'https://op3.dev/e'", "'op3.dev/e/'", "'https:///'", "'https://op3.dev/e /'"] {
+        let e = format!("{:#}", parse(&format!("analytics_prefix = {bad}")).unwrap_err());
+        assert!(e.contains("podcast.analytics_prefix must be an https:// URL ending in /"), "{bad}: {e}");
+    }
+    assert!(format!("{:#}", parse("op3 = true\nanalytics_prefix = 'https://stats.example.net/r/'").unwrap_err()).contains("keep one"));
+    // A public_url that already has the prefix would send uploads and size checks through it.
+    let e = format!("{:#}", parse("op3 = true\n[podcast.storage]\npublic_url = 'https://op3.dev/e/media.x.com'").unwrap_err());
+    assert!(e.contains("without the analytics prefix"), "{e}");
+}
+
+#[test]
 fn episodes_need_a_media_host_except_in_preview() {
     let b = podcast_blog("");
     let cfg = fs::read_to_string(b.dir.join("blog.toml")).unwrap();
@@ -1841,6 +1904,35 @@ fn deploy_uploads_episodes_signed_once_then_skips_them() {
         let text = fs::read(e.path()).unwrap();
         assert!(!String::from_utf8_lossy(&text).contains("canary-secret-value"), "{}", e.path().display());
     }
+}
+
+#[test]
+fn uploads_and_size_checks_use_the_real_url_behind_an_analytics_prefix() {
+    let mock = crate::mock_s3::Mock::start(mock_creds());
+    let (b, conf) = storage_blog(&mock);
+    let cfg = fs::read_to_string(b.dir.join("blog.toml")).unwrap();
+    fs::write(b.dir.join("blog.toml"), cfg.replacen("[podcast]\n", "[podcast]\nanalytics_prefix = \"https://op3.dev/e/\"\n", 1)).unwrap();
+    add_episode(&b, "2024-05-01-pilot", &format!("guid: \"{GUID1}\""), "episode.mp3", MP3);
+    match deploy(&b, conf.path()).unwrap() {
+        crate::deploy::Outcome::Deployed(d) => assert!(d.contains("uploaded 1 episode file"), "{d}"),
+        _ => panic!("not deployed"),
+    }
+    assert!(b.read_out("podcast/feed.xml").contains("<enclosure url=\"https://op3.dev/e,pg="));
+    let reqs = mock.requests();
+    let heads: Vec<_> = reqs.iter().filter(|r| r.method == "HEAD").collect();
+    assert!(!heads.is_empty(), "{reqs:#?}");
+    for r in &reqs {
+        assert!(r.path.starts_with("/show/example.com/pilot-") && !r.path.contains("op3"), "{} {}", r.method, r.path);
+    }
+    // Without upload keys, the size check HEADs the public URL itself, never the prefixed one.
+    let snap = crate::podcast::load_snapshot(&b.dir, crate::podcast::BUILT_SNAPSHOT).unwrap();
+    let st = crate::config::Config::load(&b.dir).unwrap().podcast.storage.unwrap();
+    let st = crate::config::StorageConfig { public_url: format!("{}/pub", mock.url), ..st };
+    let before = mock.requests().len();
+    assert!(crate::storage::sync_media(&b.dir, &st, &snap.media, None).unwrap().contains("1 episode file(s) checked"));
+    let reqs = mock.requests();
+    let public: Vec<_> = reqs[before..].iter().map(|r| r.path.as_str()).collect();
+    assert!(!public.is_empty() && public.iter().all(|p| p.starts_with("/pub/example.com/pilot-")), "{public:?}");
 }
 
 #[test]
