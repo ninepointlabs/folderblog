@@ -734,6 +734,31 @@ near the top, ready for listeners to copy. Submit that address once to Apple Pod
 Connect, Spotify for Creators and the Podcast Index; after that, new episodes show up by
 themselves.
 
+**Podcast stats with OP3.** Want to know how many people download your episodes?
+[OP3](https://op3.dev) is a free, open-source stats service for podcasts. It works as a
+*prefix*: podcast apps ask OP3 for the episode, OP3 counts the download and sends the app
+on to your file. To turn it on, add one line under `[podcast]` in `blog.toml`:
+
+```toml
+[podcast]
+analytics_prefix = "https://op3.dev/e/"
+```
+
+That's all. You don't sign up anywhere. On the next build, every episode in your feeds
+gets an address like `https://op3.dev/e,pg=<your guid>/media.example.com/myblog/pilot-1a2b3c4d.mp3`.
+(folderblog leaves out the `https://` of your own address and adds your show's `guid`, the
+way OP3 asks.) Your episode files stay where they are, uploads and checks still go straight
+to your host, and the player on your episode pages keeps playing your own address, so
+visits to your blog aren't counted as podcast downloads. `folderblog podcast` shows whether
+stats are on. Remove the line to turn them off again.
+
+To see your numbers: after OP3 has seen a few days of downloads, your show gets a free,
+public stats page at `https://op3.dev/show/<your guid>`. Your guid is the `guid = "..."`
+line under `[podcast]` in `blog.toml`. You can also paste your feed address into the form
+on [op3.dev/setup](https://op3.dev/setup) to check that OP3 sees it. Other stats services
+that work as a prefix work the same way: put their prefix (it must start with `https://`
+and end with `/`) in `analytics_prefix`.
+
 **Turning it off.** `folderblog podcast off` hides the podcast. Your episodes stay safe in
 the folder.
 
@@ -871,6 +896,7 @@ owner_email = "you@example.com"               # shown to podcast apps
 # url = "/podcast/"                           # where the show lives
 # lightning_address = "you@rizful.com"        # optional tips with Lightning
 # in_main_feed = false                        # also list episodes with your posts
+# analytics_prefix = "https://op3.dev/e/"    # download stats with OP3 (see above)
 # guid = "..."                                # set for you once; never change it
 
 [podcast.storage]
@@ -1151,7 +1177,8 @@ folderblog podcast [on|off] [BLOG]
   `theme/_podcast/` (never replacing ones you have), and adds audio files to `.gitignore`.
   The first time, it also gives the show its permanent `guid` in `blog.toml`.
 - `off` turns it off. Your episodes stay where they are.
-- Nothing after `podcast` lists the episodes, the feed address and any problems.
+- Nothing after `podcast` lists the episodes, the feed address, whether download stats
+  (`analytics_prefix`) are on, and any problems.
 - `setup` connects audio hosting on Cloudflare R2, step by step (see "Start a podcast").
 - `publish --episode SLUG` publishes a draft episode now: it checks it, uploads the audio,
   and publishes the blog. If anything is wrong, it stays a draft and you're told why.

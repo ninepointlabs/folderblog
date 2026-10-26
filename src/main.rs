@@ -418,6 +418,10 @@ fn podcast_cmd(blog: &Path, state: Option<&str>) -> Result<i32> {
             Some(s) => println!("audio is hosted at {}", s.public_url),
             None => println!("audio hosting: not set up yet, so episodes stay out of the feed; run `folderblog podcast setup`"),
         }
+        match cfg.podcast.analytics_prefix.as_str() {
+            "" => println!("download stats: off (see \"Podcast stats with OP3\" in the guide)"),
+            p => println!("download stats: on, enclosures go through {p}"),
+        }
         let site = site::Site::load(blog, LoadOptions { drafts: true, ..Default::default() })?;
         let show = site.podcast.as_ref().context("podcast did not load")?;
         let drafts = show.episodes.iter().filter(|e| e.item.src.draft).count();
