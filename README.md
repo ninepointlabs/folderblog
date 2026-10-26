@@ -146,6 +146,19 @@ most desktops already have.
 
 ## Quick start
 
+To try it on your own machine first, no accounts needed:
+
+```sh
+folderblog new myblog --no-github
+echo "# Hello, world
+
+My first post." > ~/Blogs/myblog/posts/hello.md
+folderblog build ~/Blogs/myblog
+folderblog preview ~/Blogs/myblog    # open http://127.0.0.1:4000
+```
+
+To publish on GitHub Pages (if you already made `myblog` above, pick another name in step 3):
+
 ```sh
 # 1. One time: connect GitHub (see "Preparing GitHub" below for the Client ID)
 folderblog login github --client-id Iv23li...

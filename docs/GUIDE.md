@@ -1041,7 +1041,8 @@ folderblog new NAME [--domain DOMAIN] [--repo REPO] [--no-github] [--root FOLDER
 ```
 
 - `NAME` is the blog's name. The new folder is `~/Blogs/NAME`. You can also give a full
-  path, like `~/sites/myblog`.
+  path, like `~/sites/myblog`. A name with a slash or `..` that is not a full path (like
+  `../myblog`) is refused.
 - `--domain DOMAIN` uses your own web address, like `--domain example.com`, and prints the
   records to add for it.
 - `--repo REPO` picks the GitHub repository's name. Normally it is the blog's name.
