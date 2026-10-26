@@ -1,24 +1,24 @@
 [[os]]
 id = "arch"
 name = "Arch / Omarchy"
-cmd = "curl -LO https://github.com/ninepointlabs/folderblog/releases/download/v0.2.9/folderblog-bin-0.2.9-1-x86_64.pkg.tar.zst\nsudo pacman -U folderblog-bin-0.2.9-1-x86_64.pkg.tar.zst"
+cmd = "curl -LO https://github.com/ninepointlabs/folderblog/releases/download/v0.2.10/folderblog-bin-0.2.10-1-x86_64.pkg.tar.zst\nsudo pacman -U folderblog-bin-0.2.10-1-x86_64.pkg.tar.zst"
 
 [[os]]
 id = "debian"
 name = "Debian / Ubuntu"
-cmd = "curl -LO https://github.com/ninepointlabs/folderblog/releases/download/v0.2.9/folderblog_0.2.9-1_amd64.deb\nsudo apt install ./folderblog_0.2.9-1_amd64.deb"
+cmd = "curl -LO https://github.com/ninepointlabs/folderblog/releases/download/v0.2.10/folderblog_0.2.10-1_amd64.deb\nsudo apt install ./folderblog_0.2.10-1_amd64.deb"
 
 [[os]]
 id = "fedora"
 name = "Fedora"
-cmd = "sudo dnf install https://github.com/ninepointlabs/folderblog/releases/download/v0.2.9/folderblog-0.2.9-1.x86_64.rpm"
+cmd = "sudo dnf install https://github.com/ninepointlabs/folderblog/releases/download/v0.2.10/folderblog-0.2.10-1.x86_64.rpm"
 
 [[os]]
 id = "other"
 name = "Any Linux"
-cmd = "curl -L https://github.com/ninepointlabs/folderblog/releases/download/v0.2.9/folderblog-0.2.9-x86_64-linux.tar.gz | tar xz\nsudo install -m755 folderblog-0.2.9-x86_64-linux/folderblog /usr/local/bin/"
+cmd = "curl -L https://github.com/ninepointlabs/folderblog/releases/download/v0.2.10/folderblog-0.2.10-x86_64-linux.tar.gz | tar xz\nsudo install -m755 folderblog-0.2.10-x86_64-linux/folderblog /usr/local/bin/"
 
 [[os]]
 id = "source"
 name = "From source"
-cmd = "cargo install --git https://github.com/ninepointlabs/folderblog --tag v0.2.9"
+cmd = "cargo install --git https://github.com/ninepointlabs/folderblog --tag v0.2.10"
