@@ -103,33 +103,33 @@ is the only dependency.
 
 **Arch Linux / Omarchy / Manjaro**
 ```sh
-curl -LO https://github.com/ninepointlabs/folderblog/releases/download/v0.2.9/folderblog-bin-0.2.9-1-x86_64.pkg.tar.zst
-sudo pacman -U folderblog-bin-0.2.9-1-x86_64.pkg.tar.zst
+curl -LO https://github.com/ninepointlabs/folderblog/releases/download/v0.2.10/folderblog-bin-0.2.10-1-x86_64.pkg.tar.zst
+sudo pacman -U folderblog-bin-0.2.10-1-x86_64.pkg.tar.zst
 ```
 
 **Debian / Ubuntu / Pop!_OS / Mint**
 ```sh
-curl -LO https://github.com/ninepointlabs/folderblog/releases/download/v0.2.9/folderblog_0.2.9-1_amd64.deb
-sudo apt install ./folderblog_0.2.9-1_amd64.deb
+curl -LO https://github.com/ninepointlabs/folderblog/releases/download/v0.2.10/folderblog_0.2.10-1_amd64.deb
+sudo apt install ./folderblog_0.2.10-1_amd64.deb
 ```
 
 **Fedora / RHEL / openSUSE**
 ```sh
-sudo dnf install https://github.com/ninepointlabs/folderblog/releases/download/v0.2.9/folderblog-0.2.9-1.x86_64.rpm
+sudo dnf install https://github.com/ninepointlabs/folderblog/releases/download/v0.2.10/folderblog-0.2.10-1.x86_64.rpm
 ```
 
 **Any other Linux (tarball)**
 ```sh
-curl -L https://github.com/ninepointlabs/folderblog/releases/download/v0.2.9/folderblog-0.2.9-x86_64-linux.tar.gz | tar xz
-sudo install -Dm755 folderblog-0.2.9-x86_64-linux/folderblog /usr/local/bin/folderblog
+curl -L https://github.com/ninepointlabs/folderblog/releases/download/v0.2.10/folderblog-0.2.10-x86_64-linux.tar.gz | tar xz
+sudo install -Dm755 folderblog-0.2.10-x86_64-linux/folderblog /usr/local/bin/folderblog
 ```
 
 **With [autonomix-cli](https://github.com/ninepointlabs/autonomix-cli)**: `autonomix-cli add https://github.com/ninepointlabs/folderblog`
 
-**From source** (Rust 1.89 or newer): `cargo install --git https://github.com/ninepointlabs/folderblog --tag v0.2.9`
+**From source** (Rust 1.89 or newer): `cargo install --git https://github.com/ninepointlabs/folderblog --tag v0.2.10`
 (without `--tag` you get the newest, unreleased code from `main`).
 
-These links are for folderblog 0.2.9, so they keep working after newer releases come out.
+These links are for folderblog 0.2.10, so they keep working after newer releases come out.
 For the newest version, take the same commands from the
 [latest release](https://github.com/ninepointlabs/folderblog/releases/latest) (the
 version number is in each file name).
