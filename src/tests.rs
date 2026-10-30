@@ -1981,7 +1981,8 @@ fn missing_keys_hold_the_deploy_with_a_clear_message() {
         Err(e) => format!("{e:#}"),
         Ok(_) => panic!("deployed without a key"),
     };
-    assert!(e.contains("FOLDERBLOG_STORAGE_KEY_ID") && e.contains("FOLDERBLOG_STORAGE_SECRET") && e.contains("storage/show.json"), "{e}");
+    let key = empty.path().join("storage").join("show.json").display().to_string();
+    assert!(e.contains("FOLDERBLOG_STORAGE_KEY_ID") && e.contains("FOLDERBLOG_STORAGE_SECRET") && e.contains(&key), "{e}");
     assert!(e.contains("held: no saved key for the bucket \"show\"; set FOLDERBLOG_STORAGE_KEY_ID") && !e.contains("podcast setup"), "{e}");
     assert!(!b.dir.join("deployed-marker").exists(), "held");
     // A key file written by hand, in the format the message gives, works.
@@ -2398,7 +2399,7 @@ fn publishing_changes_only_the_draft_line() {
     let ctx = mcp_ctx(&b, conf.path());
     // The sample episode, as the README says to use it: copied, with a guid and an MP3.
     let template = crate::fixtures::template_files().into_iter().find(|(rel, _)| rel == "templates/podcast-episode/index.md").unwrap().1;
-    let template = String::from_utf8(template.to_vec()).unwrap();
+    let template = String::from_utf8(template.to_vec()).unwrap().replace("\r\n", "\n");
     let before = template.replace("# guid: \"paste the one folderblog check gives you\"", &format!("guid: \"{GUID1}\""));
     assert!(before.contains("\ndraft: true\n") && before.contains(GUID1));
     b.write("podcast/2024-05-01-pilot/index.md", &before);
@@ -2541,6 +2542,7 @@ fn a_failed_install_service_leaves_no_unit_behind() {
 /// Template text ready to use: `draft: true` removed and, with `all`, every commented-out
 /// detail (`# key: value` and the indented lines under it) switched on.
 fn use_template(text: &str, all: bool, guid: Option<&str>) -> String {
+    let text = text.replace("\r\n", "\n");
     let (front, body) = text.strip_prefix("---\n").unwrap().split_once("\n---\n").unwrap();
     let mut out = vec![];
     for line in front.lines() {
@@ -2717,6 +2719,7 @@ fn a_failed_deploy_command_shows_its_output_or_says_there_was_none() {
         b.write("posts/2024-01-01-a.md", "a");
         b.build().unwrap();
         let e = format!("{:#}", crate::deploy::deploy(&b.dir, false).err().expect("deploy should fail"));
-        assert!(e.starts_with("deploy command failed (exit status: 3):\n") && e.ends_with(want), "{cmd}: {e}");
+        let head = if cfg!(windows) { "deploy command failed (exit code: 3):\n" } else { "deploy command failed (exit status: 3):\n" };
+        assert!(e.starts_with(head) && e.ends_with(want), "{cmd}: {e}");
     }
 }
