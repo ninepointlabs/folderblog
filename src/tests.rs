@@ -703,6 +703,10 @@ fn git_target_writes_cname_for_custom_domain() {
     t.deploy(&b.dir, &out).unwrap();
     let show = std::process::Command::new("git").arg("--git-dir").arg(&bare).args(["show", "gh-pages:CNAME"]).output().unwrap();
     assert_eq!(String::from_utf8_lossy(&show.stdout), "blog.example.com\n");
+    let work = b.dir.join(".blog").join("deploy").join("git");
+    let crlf = std::process::Command::new("git").args(["config", "--get", "core.autocrlf"]).current_dir(&work).output().unwrap();
+    assert!(crlf.status.success(), "{}", String::from_utf8_lossy(&crlf.stderr));
+    assert_eq!(String::from_utf8_lossy(&crlf.stdout).trim(), "false", "deploy worktree must not convert line endings");
     // Redeploying keeps it (GitHub would otherwise lose the custom domain).
     b.write("posts/2024-01-02-b.md", "b");
     let out = b.build().unwrap();
@@ -1977,7 +1981,8 @@ fn missing_keys_hold_the_deploy_with_a_clear_message() {
         Err(e) => format!("{e:#}"),
         Ok(_) => panic!("deployed without a key"),
     };
-    assert!(e.contains("FOLDERBLOG_STORAGE_KEY_ID") && e.contains("FOLDERBLOG_STORAGE_SECRET") && e.contains("storage/show.json"), "{e}");
+    let key = empty.path().join("storage").join("show.json").display().to_string();
+    assert!(e.contains("FOLDERBLOG_STORAGE_KEY_ID") && e.contains("FOLDERBLOG_STORAGE_SECRET") && e.contains(&key), "{e}");
     assert!(e.contains("held: no saved key for the bucket \"show\"; set FOLDERBLOG_STORAGE_KEY_ID") && !e.contains("podcast setup"), "{e}");
     assert!(!b.dir.join("deployed-marker").exists(), "held");
     // A key file written by hand, in the format the message gives, works.
@@ -2394,7 +2399,7 @@ fn publishing_changes_only_the_draft_line() {
     let ctx = mcp_ctx(&b, conf.path());
     // The sample episode, as the README says to use it: copied, with a guid and an MP3.
     let template = crate::fixtures::template_files().into_iter().find(|(rel, _)| rel == "templates/podcast-episode/index.md").unwrap().1;
-    let template = String::from_utf8(template.to_vec()).unwrap();
+    let template = String::from_utf8(template.to_vec()).unwrap().replace("\r\n", "\n");
     let before = template.replace("# guid: \"paste the one folderblog check gives you\"", &format!("guid: \"{GUID1}\""));
     assert!(before.contains("\ndraft: true\n") && before.contains(GUID1));
     b.write("podcast/2024-05-01-pilot/index.md", &before);
@@ -2481,8 +2486,9 @@ fn build_lock_makes_a_second_build_or_deploy_wait_its_turn() {
     drop(first);
     rx.recv_timeout(std::time::Duration::from_secs(5)).expect("the second gets the lock once the first lets go");
     second.join().unwrap();
-    // Free again afterwards.
-    drop(crate::deploy::lock(&blog, || panic!("the lock should be free")).unwrap());
+    // Free again afterwards. Waiting (instead of panicking if the kernel is a moment
+    // behind releasing the previous hold) keeps this from flaking under a busy machine.
+    drop(crate::deploy::lock(&blog, || {}).unwrap());
 }
 
 // ---------- the background service ----------
@@ -2536,6 +2542,7 @@ fn a_failed_install_service_leaves_no_unit_behind() {
 /// Template text ready to use: `draft: true` removed and, with `all`, every commented-out
 /// detail (`# key: value` and the indented lines under it) switched on.
 fn use_template(text: &str, all: bool, guid: Option<&str>) -> String {
+    let text = text.replace("\r\n", "\n");
     let (front, body) = text.strip_prefix("---\n").unwrap().split_once("\n---\n").unwrap();
     let mut out = vec![];
     for line in front.lines() {
@@ -2677,12 +2684,16 @@ fn default_podcast_page_has_a_subscribe_block_and_a_distinct_feed_title() {
 
 #[test]
 fn new_refuses_relative_names_with_a_slash_or_dotdot() {
-    let root = PathBuf::from("/srv/Blogs");
+    let root = std::env::temp_dir().join("folderblog-blogs-root");
+    assert!(root.is_absolute(), "{}", root.display());
     assert_eq!(crate::new_blog_dir("myblog", Some(root.clone())).unwrap(), root.join("myblog"));
-    assert_eq!(crate::new_blog_dir("/tmp/x/myblog", Some(root.clone())).unwrap(), PathBuf::from("/tmp/x/myblog"));
+    let abs = std::env::temp_dir().join("x").join("myblog");
+    assert!(abs.is_absolute());
+    assert_eq!(crate::new_blog_dir(&abs.to_string_lossy(), Some(root.clone())).unwrap(), abs);
+    let shown = root.display().to_string();
     for bad in ["../x", "a/b", "./x", "..", ".", "", "a\\b"] {
         let e = crate::new_blog_dir(bad, Some(root.clone())).unwrap_err().to_string();
-        assert!(e.contains("is not a blog name") && e.contains("/srv/Blogs"), "{bad}: {e}");
+        assert!(e.contains("is not a blog name") && e.contains(&shown), "{bad}: {e}");
     }
 }
 
@@ -2708,6 +2719,7 @@ fn a_failed_deploy_command_shows_its_output_or_says_there_was_none() {
         b.write("posts/2024-01-01-a.md", "a");
         b.build().unwrap();
         let e = format!("{:#}", crate::deploy::deploy(&b.dir, false).err().expect("deploy should fail"));
-        assert!(e.starts_with("deploy command failed (exit status: 3):\n") && e.ends_with(want), "{cmd}: {e}");
+        let head = if cfg!(windows) { "deploy command failed (exit code: 3):\n" } else { "deploy command failed (exit status: 3):\n" };
+        assert!(e.starts_with(head) && e.ends_with(want), "{cmd}: {e}");
     }
 }

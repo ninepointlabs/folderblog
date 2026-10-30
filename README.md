@@ -98,38 +98,38 @@ without touching the engine.
 ## Install
 
 Packages are on the [releases page](https://github.com/ninepointlabs/folderblog/releases).
-They contain a single static binary for x86_64 Linux and a systemd user service. `git`
-is the only dependency.
+Linux packages contain a single static binary and a systemd user service. `git` is the
+only dependency. Windows is an early test build: a zip and an unsigned installer, below.
 
 **Arch Linux / Omarchy / Manjaro**
 ```sh
-curl -LO https://github.com/ninepointlabs/folderblog/releases/download/v0.2.10/folderblog-bin-0.2.10-1-x86_64.pkg.tar.zst
-sudo pacman -U folderblog-bin-0.2.10-1-x86_64.pkg.tar.zst
+curl -LO https://github.com/ninepointlabs/folderblog/releases/download/v0.2.11/folderblog-bin-0.2.11-1-x86_64.pkg.tar.zst
+sudo pacman -U folderblog-bin-0.2.11-1-x86_64.pkg.tar.zst
 ```
 
 **Debian / Ubuntu / Pop!_OS / Mint**
 ```sh
-curl -LO https://github.com/ninepointlabs/folderblog/releases/download/v0.2.10/folderblog_0.2.10-1_amd64.deb
-sudo apt install ./folderblog_0.2.10-1_amd64.deb
+curl -LO https://github.com/ninepointlabs/folderblog/releases/download/v0.2.11/folderblog_0.2.11-1_amd64.deb
+sudo apt install ./folderblog_0.2.11-1_amd64.deb
 ```
 
 **Fedora / RHEL / openSUSE**
 ```sh
-sudo dnf install https://github.com/ninepointlabs/folderblog/releases/download/v0.2.10/folderblog-0.2.10-1.x86_64.rpm
+sudo dnf install https://github.com/ninepointlabs/folderblog/releases/download/v0.2.11/folderblog-0.2.11-1.x86_64.rpm
 ```
 
 **Any other Linux (tarball)**
 ```sh
-curl -L https://github.com/ninepointlabs/folderblog/releases/download/v0.2.10/folderblog-0.2.10-x86_64-linux.tar.gz | tar xz
-sudo install -Dm755 folderblog-0.2.10-x86_64-linux/folderblog /usr/local/bin/folderblog
+curl -L https://github.com/ninepointlabs/folderblog/releases/download/v0.2.11/folderblog-0.2.11-x86_64-linux.tar.gz | tar xz
+sudo install -Dm755 folderblog-0.2.11-x86_64-linux/folderblog /usr/local/bin/folderblog
 ```
 
 **With [autonomix-cli](https://github.com/ninepointlabs/autonomix-cli)**: `autonomix-cli add https://github.com/ninepointlabs/folderblog`
 
-**From source** (Rust 1.89 or newer): `cargo install --git https://github.com/ninepointlabs/folderblog --tag v0.2.10`
+**From source** (Rust 1.89 or newer): `cargo install --git https://github.com/ninepointlabs/folderblog --tag v0.2.11`
 (without `--tag` you get the newest, unreleased code from `main`).
 
-These links are for folderblog 0.2.10, so they keep working after newer releases come out.
+These links are for folderblog 0.2.11, so they keep working after newer releases come out.
 For the newest version, take the same commands from the
 [latest release](https://github.com/ninepointlabs/folderblog/releases/latest) (the
 version number is in each file name).
@@ -143,6 +143,52 @@ every blog up to date (see [Running in the background](#running-in-the-backgroun
 
 Desktop notifications use `notify-send` (package `libnotify` or `libnotify-bin`), which
 most desktops already have.
+
+## Windows (early test build)
+
+This is the first Windows build, for trying on a real machine. It is not signed.
+Windows SmartScreen will say it protected your PC: choose **More info**, then **Run anyway**.
+There is no tray icon yet. macOS is not part of this release.
+
+You need [Git for Windows](https://git-scm.com/download/win). In the installer, pick
+**Git from the command line and also from 3rd-party software**. That puts `git` on your
+PATH. Command deploys and build hooks also need `sh`; folderblog looks for it on PATH
+and in `C:\Program Files\Git\bin`. If a hook says `sh` is missing, add that `bin` folder
+to PATH.
+
+**Installer** (`folderblog-0.2.11-x86_64-windows-setup.exe` on the release): per user,
+no administrator account. It can add `folderblog` to your user PATH, and it can
+optionally register the logon task. The installer is unsigned, so SmartScreen warns
+before it opens.
+
+**Zip** (`folderblog-0.2.11-x86_64-windows.zip`): unpack `folderblog.exe` somewhere on
+your PATH, or call it by its full path.
+
+Where things live:
+
+| | Linux | Windows |
+|---|---|---|
+| Blogs | `~/Blogs` | `%USERPROFILE%\Blogs` (usually `C:\Users\You\Blogs`) |
+| GitHub login and podcast keys | `~/.config/folderblog` | `%APPDATA%\folderblog` |
+| Background log | the systemd journal | `%LOCALAPPDATA%\folderblog\watch.log` |
+
+`FOLDERBLOG_CONFIG_DIR` and `FOLDERBLOG_ROOT` still override those, on both systems.
+
+Start the background watcher (a per-user scheduled task at sign-in, no admin, hidden,
+restarts if it exits):
+
+```bat
+folderblog install-service
+folderblog status
+folderblog install-service --uninstall
+```
+
+`--no-start` registers the task but does not run it until the next sign-in. `--print`
+shows the task definition and changes nothing. Failure notices are written to the log
+file and to the terminal. There is no desktop popup on Windows yet.
+
+Publishing still shells out to `git`. The deploy checkout forces `core.autocrlf=false`,
+so Git for Windows does not rewrite the site's line endings.
 
 ## Quick start
 
@@ -766,7 +812,7 @@ branch. Uncommitted edits on the branch still publish.
 | `folderblog new NAME [--domain D] [--repo R] [--no-github]` | Create a blog in `~/Blogs/NAME` (published to GitHub Pages if logged in) |
 | `folderblog login github [--client-id ID]` | Connect your GitHub App (once) |
 | `folderblog logout github` | Forget the GitHub login |
-| `folderblog install-service` | Run `watch` in the background (systemd user service) |
+| `folderblog install-service [--uninstall]` | Run `watch` in the background (systemd on Linux, a per-user logon task on Windows) |
 | `folderblog status [--json]` | Build/publish state of every blog, GitHub login and Pages builds |
 | `folderblog watch` | The background process itself: watch, build, publish |
 | `folderblog deploy [BLOG] [--force]` | Build and publish one blog now |

@@ -114,17 +114,20 @@ pub enum Cmd {
         #[arg(long)]
         json: bool,
     },
-    /// Install (and start) the systemd user service that runs `watch`
+    /// Install and start the background watcher (systemd on Linux, a per-user logon task on Windows)
     InstallService {
         /// The folder that holds your blogs (default: ~/Blogs)
         #[arg(long, env = "FOLDERBLOG_ROOT")]
         root: Option<PathBuf>,
-        /// Only write the unit file; do not enable or start it
+        /// Only write the unit file or task; do not start it
         #[arg(long)]
         no_start: bool,
-        /// Print the unit file instead of installing it
+        /// Print the unit file (Linux) or task definition (Windows) instead of installing it
         #[arg(long)]
         print: bool,
+        /// Remove the background watcher instead of installing it
+        #[arg(long)]
+        uninstall: bool,
     },
     /// Turn the photo gallery on or off; on adds gallery/ and the gallery templates (no argument: show its state)
     Gallery {

@@ -47,15 +47,20 @@ pub struct GitTarget {
 }
 
 fn git(dir: &Path, args: &[&str], env: &[(String, String)]) -> Result<String> {
+    // `-c core.autocrlf=false` stops Git for Windows rewriting the site on checkout or commit.
+    // `safecrlf=false` keeps git from refusing a file over line endings.
+    let mut full = vec!["-c", "core.autocrlf=false", "-c", "core.safecrlf=false"];
+    full.extend_from_slice(args);
+    let dir = crate::paths::simplify(dir);
     let out = Command::new("git")
-        .args(args)
-        .current_dir(dir)
+        .args(&full)
+        .current_dir(&dir)
         .env("GIT_TERMINAL_PROMPT", "0")
         .envs(env.iter().map(|(k, v)| (k, v)))
         .output()
-        .with_context(|| format!("running git {}", args.join(" ")))?;
+        .with_context(|| format!("running git {}", full.join(" ")))?;
     if !out.status.success() {
-        bail!("git {} failed: {}", args.join(" "), tail(&String::from_utf8_lossy(&out.stderr), 10));
+        bail!("git {} failed: {}", full.join(" "), tail(&String::from_utf8_lossy(&out.stderr), 10));
     }
     Ok(String::from_utf8_lossy(&out.stdout).trim().to_string())
 }
@@ -74,6 +79,9 @@ impl Target for GitTarget {
         } else {
             git(&work, &["remote", "set-url", "origin", &self.remote], &self.env)?;
         }
+        // Persist it in the worktree too, so a later manual `git` there does not convert endings.
+        git(&work, &["config", "core.autocrlf", "false"], &self.env)?;
+        git(&work, &["config", "core.safecrlf", "false"], &self.env)?;
         let remote_has_branch = git(&work, &["fetch", "-q", "--depth", "1", "origin", &self.branch], &self.env).is_ok();
         let branch_ref = format!("refs/heads/{}", self.branch);
         if remote_has_branch {
@@ -199,14 +207,7 @@ impl Target for CommandTarget {
     }
 
     fn deploy(&self, blog_dir: &Path, out: &Path) -> Result<String> {
-        let output = Command::new("sh")
-            .arg("-c")
-            .arg(&self.command)
-            .current_dir(blog_dir)
-            .env("FOLDERBLOG_OUT", out)
-            .env("FOLDERBLOG_BLOG", blog_dir)
-            .output()
-            .context("starting deploy command")?;
+        let output = crate::shell::run(blog_dir, &self.command, blog_dir, out)?;
         if !output.status.success() {
             bail!("deploy command failed ({}):\n{}", output.status, command_output(&output.stdout, &output.stderr));
         }
@@ -339,10 +340,11 @@ pub fn deploy_with(blog_dir: &Path, force: bool, config_dir: &Path) -> Result<Ou
 
 /// Refuse to publish a blog folder whose git checkout is off `want` or mid git operation.
 pub fn source_ready(blog_dir: &Path, want: &str) -> Result<()> {
+    let blog_dir = crate::paths::simplify(blog_dir);
     let git = |args: &[&str]| -> Option<String> {
         let o = Command::new("git")
             .args(args)
-            .current_dir(blog_dir)
+            .current_dir(&blog_dir)
             .env_remove("GIT_DIR")
             .env_remove("GIT_WORK_TREE")
             .env_remove("GIT_INDEX_FILE")
@@ -353,7 +355,7 @@ pub fn source_ready(blog_dir: &Path, want: &str) -> Result<()> {
     let Some(git_dir) = git(&["rev-parse", "--absolute-git-dir"]) else {
         bail!("held: deploy_branch is set but {} is not a git repo", blog_dir.display());
     };
-    let git_dir = PathBuf::from(git_dir);
+    let git_dir = crate::paths::simplify(&PathBuf::from(git_dir));
     for busy in ["index.lock", "MERGE_HEAD", "CHERRY_PICK_HEAD", "REVERT_HEAD", "rebase-merge", "rebase-apply"] {
         if git_dir.join(busy).exists() {
             bail!("held: git operation in progress ({busy})");
