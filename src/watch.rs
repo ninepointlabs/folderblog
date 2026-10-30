@@ -18,20 +18,43 @@ pub const MAX_WAIT: Duration = Duration::from_secs(8);
 pub const RETRY_FAILED: Duration = Duration::from_secs(5 * 60);
 
 pub fn log(msg: impl AsRef<str>) {
-    // stderr goes to the journal under systemd.
-    eprintln!("[folderblog] {}", msg.as_ref());
+    // stderr goes to the journal under systemd. On Windows, the logon task also
+    // appends the same line to %LOCALAPPDATA%\folderblog\watch.log.
+    let line = format!("[folderblog] {}", msg.as_ref());
+    eprintln!("{line}");
+    if std::env::var_os("FOLDERBLOG_BACKGROUND").is_some()
+        && let Some(path) = crate::service::log_file()
+    {
+        if let Some(dir) = path.parent() {
+            let _ = std::fs::create_dir_all(dir);
+        }
+        if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open(path) {
+            use std::io::Write;
+            let _ = writeln!(f, "{line}");
+        }
+    }
 }
 
 pub fn notify_desktop(summary: &str, body: &str, critical: bool) {
     if std::env::var_os("FOLDERBLOG_NO_NOTIFY").is_some() {
         return;
     }
-    let _ = std::process::Command::new("notify-send")
-        .args(["-a", "folderblog", "-u", if critical { "critical" } else { "normal" }, summary, body])
-        .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
-        .spawn()
-        .and_then(|mut c| c.wait());
+    #[cfg(windows)]
+    {
+        // No notify-send on Windows. The message is on stderr and, for the logon
+        // task, in the log file. A missing notifier must not fail the publish.
+        let _ = critical;
+        log(format!("notice: {summary} — {body}"));
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = std::process::Command::new("notify-send")
+            .args(["-a", "folderblog", "-u", if critical { "critical" } else { "normal" }, summary, body])
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .spawn()
+            .and_then(|mut c| c.wait());
+    }
 }
 
 /// Login problems are notified once, then at most daily, instead of on every save.
@@ -100,10 +123,17 @@ pub fn list_blogs(root: &Path) -> Vec<PathBuf> {
 /// Whether the background service (`folderblog install-service`) is running, so a failed
 /// deploy will be retried without anyone doing anything.
 pub fn service_running() -> bool {
-    std::process::Command::new("systemctl")
-        .args(["--user", "is-active", "--quiet", crate::APP])
-        .status()
-        .is_ok_and(|s| s.success())
+    #[cfg(windows)]
+    {
+        crate::service::task_running()
+    }
+    #[cfg(not(windows))]
+    {
+        std::process::Command::new("systemctl")
+            .args(["--user", "is-active", "--quiet", crate::APP])
+            .status()
+            .is_ok_and(|s| s.success())
+    }
 }
 
 /// What happens next to a deploy that failed outside the watcher.
@@ -120,7 +150,7 @@ pub fn retry_note(blog: &Path, service_running: bool) -> String {
 
 /// Which blog (if any) a changed path belongs to, and whether it should trigger a rebuild.
 pub fn relevant(root: &Path, path: &Path) -> Option<PathBuf> {
-    let rel = path.strip_prefix(root).ok()?;
+    let rel = crate::paths::strip_prefix_flex(path, root)?;
     let mut comps = rel.components();
     let blog = root.join(comps.next()?.as_os_str());
     let inner: PathBuf = comps.collect();
@@ -225,7 +255,9 @@ struct Pending {
 }
 
 pub fn watch(root: &Path) -> Result<()> {
-    let root = root.canonicalize()?;
+    #[cfg(windows)]
+    crate::service::prepare_windows_watch();
+    let root = crate::paths::simplify(&root.canonicalize()?);
     log(format!("watching {}", root.display()));
     let (tx, rx) = mpsc::channel::<notify::Result<notify::Event>>();
     let mut watcher = notify::recommended_watcher(tx)?;

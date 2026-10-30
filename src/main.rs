@@ -12,10 +12,13 @@ mod github;
 mod manpage;
 mod markdown;
 mod mcp;
+mod paths;
 mod podcast;
 mod preview;
 mod render;
+mod service;
 mod setup;
+mod shell;
 mod site;
 mod state;
 mod status;
@@ -38,12 +41,11 @@ use std::path::{Path, PathBuf};
 
 pub const APP: &str = "folderblog";
 
-fn default_root(root: Option<PathBuf>) -> PathBuf {
-    root.unwrap_or_else(|| home().join("Blogs"))
-}
-
-fn home() -> PathBuf {
-    std::env::var_os("HOME").map(PathBuf::from).unwrap_or_else(|| PathBuf::from("."))
+fn default_root(root: Option<PathBuf>) -> Result<PathBuf> {
+    Ok(match root {
+        Some(p) => p,
+        None => paths::home()?.join("Blogs"),
+    })
 }
 
 fn blog_dir(p: Option<PathBuf>) -> Result<PathBuf> {
@@ -51,7 +53,7 @@ fn blog_dir(p: Option<PathBuf>) -> Result<PathBuf> {
     if !p.join(config::CONFIG_FILE).is_file() {
         bail!("{} is not a blog folder (no {})", p.display(), config::CONFIG_FILE);
     }
-    Ok(p.canonicalize()?)
+    Ok(paths::simplify(&p.canonicalize()?))
 }
 
 fn main() {
@@ -184,7 +186,7 @@ fn run(cli: Cli) -> Result<i32> {
             Ok(0)
         }
         Cmd::Watch { root } => {
-            let root = default_root(root);
+            let root = default_root(root)?;
             std::fs::create_dir_all(&root)?;
             watch::watch(&root)?;
             Ok(0)
@@ -201,11 +203,9 @@ fn run(cli: Cli) -> Result<i32> {
             Ok(0)
         }
         Cmd::Status { root, json } => {
-            let root = default_root(root);
+            let root = default_root(root)?;
             let blogs = watch::list_blogs(&root);
-            let daemon = service_state(
-                std::process::Command::new("systemctl").args(["--user", "is-active", APP]).output().ok().map(|o| String::from_utf8_lossy(&o.stdout).to_string()).as_deref(),
-            );
+            let daemon = background_state();
             if json {
                 let v: serde_json::Map<String, serde_json::Value> = blogs
                     .iter()
@@ -237,13 +237,18 @@ fn run(cli: Cli) -> Result<i32> {
             let bad = blogs.iter().any(|b| !status::healthy(&status::load(b)));
             Ok(if bad { 1 } else { 0 })
         }
-        Cmd::InstallService { root, no_start, print } => install_service(&default_root(root), no_start, print),
+        Cmd::InstallService { root, no_start, print, uninstall } => install_service(&default_root(root)?, no_start, print, uninstall),
         Cmd::Guide => {
             manpage::show(manpage::GUIDE, "less", &["-R"])?;
             Ok(0)
         }
         Cmd::Man => {
-            manpage::show(&manpage::render(), "man", &["-l", "-"])?;
+            if shell::on_path("man") {
+                manpage::show(&manpage::render(), "man", &["-l", "-"])?;
+            } else {
+                eprintln!("note: `man` is not installed; showing the guide instead.\n");
+                manpage::show(manpage::GUIDE, "less", &["-R"])?;
+            }
             Ok(0)
         }
         Cmd::Gallery { state, blog } => gallery_cmd(&blog_dir(blog)?, state.as_deref()),
@@ -287,7 +292,7 @@ fn run(cli: Cli) -> Result<i32> {
             };
             if state.as_deref() == Some("publish") {
                 let slug = episode.context("which episode? pass --episode SLUG (`folderblog podcast` lists them)")?;
-                let ctx = mcp::Ctx { root: default_root(None), config_dir: github::config_dir() };
+                let ctx = mcp::Ctx { root: default_root(None)?, config_dir: github::config_dir() };
                 let r = mcp::publish(&ctx, &blog, &slug)?;
                 println!("published: {}", r["episode_url"].as_str().unwrap_or(""));
                 println!("feed: {}", r["feed_url"].as_str().unwrap_or(""));
@@ -306,11 +311,9 @@ fn run(cli: Cli) -> Result<i32> {
             let mut out = std::io::stdout();
             let mut hidden = |prompt: &str| -> Result<String> { Ok(rpassword::prompt_password(format!("{prompt} "))?.trim().to_string()) };
             let mut open = |url: &str| {
-                let _ = std::process::Command::new("xdg-open")
-                    .arg(url)
-                    .stdout(std::process::Stdio::null())
-                    .stderr(std::process::Stdio::null())
-                    .spawn();
+                if open::that(url).is_err() {
+                    eprintln!("(could not open a browser; use the link printed above)");
+                }
             };
             let mut io = setup::Io {
                 input: &mut input,
@@ -326,7 +329,7 @@ fn run(cli: Cli) -> Result<i32> {
             setup::run(&blog, opts, &mut io)
         }
         Cmd::Mcp { root } => {
-            mcp::serve(mcp::Ctx { root: default_root(root), config_dir: github::config_dir() })?;
+            mcp::serve(mcp::Ctx { root: default_root(root)?, config_dir: github::config_dir() })?;
             Ok(0)
         }
         Cmd::Templates { blog } => {
@@ -518,11 +521,11 @@ fn new_blog_dir(name: &str, root: Option<PathBuf>) -> Result<PathBuf> {
     if name.is_empty() || name == "." || name == ".." || name.contains(['/', '\\']) {
         bail!(
             "`{name}` is not a blog name: use a plain name like `myblog` (made in {}), or a full path like `{}`",
-            default_root(root).display(),
-            home().join("sites").join("myblog").display()
+            default_root(root.clone())?.display(),
+            paths::home()?.join("sites").join("myblog").display()
         );
     }
-    Ok(default_root(root).join(name))
+    Ok(default_root(root)?.join(name))
 }
 
 pub fn new_blog(dir: &Path, github: Option<(&str, &str, Option<&str>)>) -> Result<()> {
@@ -549,6 +552,7 @@ pub fn new_blog(dir: &Path, github: Option<(&str, &str, Option<&str>)>) -> Resul
 
 /// What `systemctl --user is-active` said (None: systemctl isn't there). It prints nothing
 /// when no service manager answers (no user session: containers, plain SSH logins).
+#[cfg_attr(windows, allow(dead_code))]
 fn service_state(is_active_stdout: Option<&str>) -> String {
     match is_active_stdout.map(str::trim) {
         None => "unknown, no systemctl".into(),
@@ -557,11 +561,32 @@ fn service_state(is_active_stdout: Option<&str>) -> String {
     }
 }
 
+#[cfg_attr(windows, allow(dead_code))]
 const NO_USER_SESSION_HINT: &str = "without a systemd user session (in a container, or over SSH without lingering), run `folderblog watch` in a terminal or tmux instead, or run `loginctl enable-linger $USER` and log in again";
+
+/// `folderblog status`'s background line. Linux asks systemd. Windows asks Task Scheduler.
+fn background_state() -> String {
+    #[cfg(windows)]
+    {
+        service::task_status_label()
+    }
+    #[cfg(not(windows))]
+    {
+        service_state(
+            std::process::Command::new("systemctl")
+                .args(["--user", "is-active", APP])
+                .output()
+                .ok()
+                .map(|o| String::from_utf8_lossy(&o.stdout).to_string())
+                .as_deref(),
+        )
+    }
+}
 
 /// Write the unit to `path` and start it with `systemctl` (via `run`, which says whether the
 /// command succeeded). If that fails, the unit file is put back as it was, so a failed install
 /// leaves nothing behind and never breaks a unit that was already there.
+#[cfg_attr(windows, allow(dead_code))]
 fn install_unit(path: &Path, unit: &str, no_start: bool, run: &mut dyn FnMut(&[&str]) -> Result<bool>) -> Result<()> {
     let before = std::fs::read_to_string(path).ok();
     std::fs::create_dir_all(path.parent().unwrap())?;
@@ -591,11 +616,52 @@ fn install_unit(path: &Path, unit: &str, no_start: bool, run: &mut dyn FnMut(&[&
     Ok(())
 }
 
-fn install_service(root: &Path, no_start: bool, print: bool) -> Result<i32> {
+fn install_service(root: &Path, no_start: bool, print: bool, uninstall: bool) -> Result<i32> {
+    if uninstall {
+        if print || no_start {
+            bail!("--uninstall cannot be combined with --print or --no-start");
+        }
+        #[cfg(windows)]
+        {
+            return service::uninstall_windows();
+        }
+        #[cfg(not(windows))]
+        {
+            return uninstall_systemd();
+        }
+    }
+    #[cfg(windows)]
+    {
+        return service::install_windows(root, no_start, print);
+    }
+    #[cfg(not(windows))]
+    {
+        install_systemd(root, no_start, print)
+    }
+}
+
+#[cfg(not(windows))]
+fn uninstall_systemd() -> Result<i32> {
+    let st = std::process::Command::new("systemctl").args(["--user", "disable", "--now", APP]).status()?;
+    let path = paths::home()?.join(".config/systemd/user").join(format!("{APP}.service"));
+    if path.is_file() {
+        std::fs::remove_file(&path)?;
+        let _ = std::process::Command::new("systemctl").args(["--user", "daemon-reload"]).status();
+        println!("removed {}", path.display());
+    }
+    if !st.success() {
+        bail!("systemctl --user disable --now {APP} failed; the service may not be installed");
+    }
+    println!("stopped the background service");
+    Ok(0)
+}
+
+#[cfg(not(windows))]
+fn install_systemd(root: &Path, no_start: bool, print: bool) -> Result<i32> {
     let exe = std::env::current_exe()?.canonicalize()?;
     // Installed from a package: the unit already ships in /usr/lib/systemd/user.
     let packaged = Path::new("/usr/lib/systemd/user/folderblog.service");
-    if !print && packaged.exists() && exe == Path::new("/usr/bin/folderblog") && *root == home().join("Blogs") {
+    if !print && packaged.exists() && exe == Path::new("/usr/bin/folderblog") && *root == paths::home()?.join("Blogs") {
         if !no_start {
             let st = std::process::Command::new("systemctl").args(["--user", "enable", "--now", APP]).status()?;
             if !st.success() {
@@ -616,7 +682,7 @@ fn install_service(root: &Path, no_start: bool, print: bool) -> Result<i32> {
         print!("{unit}");
         return Ok(0);
     }
-    let path = home().join(".config/systemd/user").join(format!("{APP}.service"));
+    let path = paths::home()?.join(".config/systemd/user").join(format!("{APP}.service"));
     if exe.to_string_lossy().contains("/target/") {
         println!("note: the unit points at a cargo build directory ({}); `cargo install --path .` gives a stable path", exe.display());
     }

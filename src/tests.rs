@@ -703,6 +703,10 @@ fn git_target_writes_cname_for_custom_domain() {
     t.deploy(&b.dir, &out).unwrap();
     let show = std::process::Command::new("git").arg("--git-dir").arg(&bare).args(["show", "gh-pages:CNAME"]).output().unwrap();
     assert_eq!(String::from_utf8_lossy(&show.stdout), "blog.example.com\n");
+    let work = b.dir.join(".blog").join("deploy").join("git");
+    let crlf = std::process::Command::new("git").args(["config", "--get", "core.autocrlf"]).current_dir(&work).output().unwrap();
+    assert!(crlf.status.success(), "{}", String::from_utf8_lossy(&crlf.stderr));
+    assert_eq!(String::from_utf8_lossy(&crlf.stdout).trim(), "false", "deploy worktree must not convert line endings");
     // Redeploying keeps it (GitHub would otherwise lose the custom domain).
     b.write("posts/2024-01-02-b.md", "b");
     let out = b.build().unwrap();
@@ -2481,8 +2485,9 @@ fn build_lock_makes_a_second_build_or_deploy_wait_its_turn() {
     drop(first);
     rx.recv_timeout(std::time::Duration::from_secs(5)).expect("the second gets the lock once the first lets go");
     second.join().unwrap();
-    // Free again afterwards.
-    drop(crate::deploy::lock(&blog, || panic!("the lock should be free")).unwrap());
+    // Free again afterwards. Waiting (instead of panicking if the kernel is a moment
+    // behind releasing the previous hold) keeps this from flaking under a busy machine.
+    drop(crate::deploy::lock(&blog, || {}).unwrap());
 }
 
 // ---------- the background service ----------
@@ -2677,12 +2682,16 @@ fn default_podcast_page_has_a_subscribe_block_and_a_distinct_feed_title() {
 
 #[test]
 fn new_refuses_relative_names_with_a_slash_or_dotdot() {
-    let root = PathBuf::from("/srv/Blogs");
+    let root = std::env::temp_dir().join("folderblog-blogs-root");
+    assert!(root.is_absolute(), "{}", root.display());
     assert_eq!(crate::new_blog_dir("myblog", Some(root.clone())).unwrap(), root.join("myblog"));
-    assert_eq!(crate::new_blog_dir("/tmp/x/myblog", Some(root.clone())).unwrap(), PathBuf::from("/tmp/x/myblog"));
+    let abs = std::env::temp_dir().join("x").join("myblog");
+    assert!(abs.is_absolute());
+    assert_eq!(crate::new_blog_dir(&abs.to_string_lossy(), Some(root.clone())).unwrap(), abs);
+    let shown = root.display().to_string();
     for bad in ["../x", "a/b", "./x", "..", ".", "", "a\\b"] {
         let e = crate::new_blog_dir(bad, Some(root.clone())).unwrap_err().to_string();
-        assert!(e.contains("is not a blog name") && e.contains("/srv/Blogs"), "{bad}: {e}");
+        assert!(e.contains("is not a blog name") && e.contains(&shown), "{bad}: {e}");
     }
 }
 

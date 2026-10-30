@@ -34,15 +34,20 @@ cargo deb --no-build --no-strip --target "$TARGET" -o "dist/folderblog_${VERSION
 echo "== rpm"
 cargo generate-rpm --target "$TARGET" -o "dist/folderblog-${VERSION}-1.x86_64.rpm"
 
-echo "== arch"
-ARCHDIR=$(mktemp -d)
-cp packaging/arch/PKGBUILD "$ARCHDIR/"
-cp "dist/$NAME.tar.gz" "$ARCHDIR/"
-# Build from the local tarball instead of downloading the release.
-sed -i "s|^source=.*|source=(\"$NAME.tar.gz\")|; s|^pkgver=.*|pkgver=$VERSION|" "$ARCHDIR/PKGBUILD"
-(cd "$ARCHDIR" && PKGDEST="$PWD" makepkg -f --nodeps --noconfirm >/dev/null)
-cp "$ARCHDIR"/folderblog-bin-*.pkg.tar.zst dist/
-rm -rf "$ARCHDIR" "dist/$NAME"
+if command -v makepkg >/dev/null 2>&1; then
+  echo "== arch"
+  ARCHDIR=$(mktemp -d)
+  cp packaging/arch/PKGBUILD "$ARCHDIR/"
+  cp "dist/$NAME.tar.gz" "$ARCHDIR/"
+  # Build from the local tarball instead of downloading the release.
+  sed -i "s|^source=.*|source=(\"$NAME.tar.gz\")|; s|^pkgver=.*|pkgver=$VERSION|" "$ARCHDIR/PKGBUILD"
+  (cd "$ARCHDIR" && PKGDEST="$PWD" makepkg -f --nodeps --noconfirm >/dev/null)
+  cp "$ARCHDIR"/folderblog-bin-*.pkg.tar.zst dist/
+  rm -rf "$ARCHDIR"
+else
+  echo "== arch skipped (makepkg not installed; an Arch machine still builds the package)"
+fi
+rm -rf "dist/$NAME"
 
 (cd dist && sha256sum -- * > SHA256SUMS)
 echo "== done"
