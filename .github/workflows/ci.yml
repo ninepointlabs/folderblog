@@ -122,4 +122,6 @@ jobs:
             The Windows zip and the `.exe` installer are **not signed**. Windows SmartScreen will warn; choose More info, then Run anyway.
 
             The installer is per user (no administrator account). It can add `folderblog` to PATH and, if you tick the box, register the sign-in task. See the README section "Windows (early test build)".
+
+            On Linux you can also install with [autonomix-cli](https://github.com/ninepointlabs/autonomix-cli): `autonomix-cli add https://github.com/ninepointlabs/folderblog`
           generate_release_notes: false
