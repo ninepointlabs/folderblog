@@ -8,8 +8,9 @@
 # The title. Leave it out to use the first heading of the post instead.
 title: "A walk in the woods"
 
-# When it was written, like 2026-03-21 or "2026-03-21 14:30".
-# Leave it out and folderblog uses the day it first sees the post.
+# When it was written, like 2026-03-21 or "2026-03-21 14:30" (blog.toml `timezone`).
+# Leave it out and folderblog uses the day it first sees the post. Without a time,
+# same-day posts are ordered by when each file was first committed or saved.
 # date: 2026-03-21
 
 # When you last changed it (also accepted as `modified` or `lastmod`).

@@ -287,6 +287,14 @@ never changes it, even if you edit the post later. Keep `dates.toml` with your b
 you copy the blog to another computer or keep it in git, that file makes sure undated
 posts keep their dates and web addresses.
 
+**The time.** Posts are listed newest first, by date and time, so two posts written on
+the same day show up in the right order. If you want to say the exact time, put it in the
+`date` at the top of the post: `date: 2026-11-10 09:28`. If you only give a day (in the
+file name or as `date: 2026-11-10`), folderblog picks the time for you: when you first
+saved the post to git, or else when the file was last changed. It writes that time down
+in `dates.toml` too, so editing the post later doesn't move it around. The day, and so the
+web address, never changes.
+
 **The web address.** The address comes from the file name. `my-summer.md` written in
 September 2026 lives at `/2026/09/my-summer/`. You can change this pattern in
 `blog.toml` (see "Settings").
@@ -319,7 +327,7 @@ Here is every detail folderblog knows about:
 | Detail | What it does |
 |---|---|
 | `title` | The title, if you don't want to use the first heading |
-| `date` | The date, like `2026-03-21` or `2026-03-21 14:30` |
+| `date` | The date, like `2026-03-21`, or with a time: `2026-03-21 14:30` |
 | `tags` | Labels, like `[walking, nature]` or `walking, nature` |
 | `slug` | The last part of the web address, like `woods-walk` |
 | `url` | The whole web address, like `/walks/woods/` |
@@ -879,6 +887,7 @@ description = "Notes from my workbench"       # a sentence about your blog
 author = "Your Name"                          # who writes it
 language = "en"                               # the language, like en, fr, de
 permalink = "/{year}/{month}/{slug}/"         # the pattern for post addresses
+timezone = "America/Chicago"                  # your time zone (default: your computer's)
 image = "/img/share.png"                      # the picture for shared links (default: static/og-default.png)
 
 [feed]
@@ -934,6 +943,9 @@ Some more about a few of them:
   `/myblog`. If it's wrong, links on your website break.
 - **`permalink`** can use `{year}`, `{month}`, `{day}` and `{slug}`. `{slug}` must be in
   it. Changing it changes the address of every post.
+- **`timezone`** is a name like `America/Chicago` or `Europe/London`. A `date` with a time
+  but no offset, like `2026-03-21 14:30`, means that time there. Set it if the computer
+  that publishes your blog might be in another time zone.
 - **`[deploy]` for `git`** also has `nojekyll` (default `true`), `author_name` and
   `author_email`.
 - **`[build]`** commands are for people who use extra tools, like Tailwind. They run

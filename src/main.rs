@@ -21,6 +21,7 @@ mod state;
 mod status;
 mod storage;
 mod templates;
+mod tz;
 mod upgrade;
 mod util;
 mod watch;

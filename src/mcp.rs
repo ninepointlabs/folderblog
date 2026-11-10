@@ -407,7 +407,8 @@ fn checked_fields(fields: &Map<String, Json>) -> Result<Vec<(String, Json)>> {
                 Json::Bool(false) => bail!("draft: use publish_episode to publish an episode"),
                 _ => return Err(bad("must be true")),
             },
-            "date" => match v.as_str().and_then(crate::content::parse_date) {
+            // Only checks the form, so any zone will do.
+            "date" => match v.as_str().and_then(|s| crate::content::parse_date(s, Default::default())) {
                 Some(_) => v.clone(),
                 None => return Err(bad("must be YYYY-MM-DD or RFC 3339")),
             },
@@ -463,9 +464,10 @@ pub fn create_episode(ctx: &Ctx, a: &CreateArgs) -> Result<Json> {
     if slug.is_empty() {
         bail!("the title needs some letters or digits");
     }
+    let tz = Config::load(&blog)?.tz;
     let date = match &a.date {
-        Some(d) => crate::content::parse_date(d).with_context(|| format!("date {d:?} must be YYYY-MM-DD or RFC 3339"))?,
-        None => chrono::Local::now().fixed_offset(),
+        Some(d) => crate::content::parse_date(d, tz).with_context(|| format!("date {d:?} must be YYYY-MM-DD or RFC 3339"))?,
+        None => tz.now(),
     };
     let folder = format!("{}-{slug}", date.format("%Y-%m-%d"));
     let base = blog.join(podcast::PODCAST_DIR);

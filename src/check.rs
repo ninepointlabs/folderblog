@@ -31,6 +31,18 @@ pub fn check(blog: &Path, fixtures: Option<String>) -> Result<Report> {
         }
     };
     rep.warnings.extend(site.warnings.iter().cloned());
+    // An unreadable `updated` is left out of the page and the sitemap; say so.
+    for it in site.posts.iter().chain(&site.pages) {
+        for k in ["updated", "modified", "lastmod"] {
+            let Some(v) = it.src.front.get(k) else { continue };
+            if v.as_str().and_then(|s| crate::content::parse_date(s, site.cfg.tz)).is_none() {
+                rep.warnings.push(format!(
+                    "{}: unrecognised {k} {v} (use YYYY-MM-DD, YYYY-MM-DD HH:MM or RFC 3339); it is ignored",
+                    it.src.rel.display()
+                ));
+            }
+        }
+    }
     let plan = site.plan()?;
     let tmp = site.blog_dir.join(STATE_DIR).join(format!("check-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&tmp);
