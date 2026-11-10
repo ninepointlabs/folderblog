@@ -20,6 +20,12 @@ pub struct Config {
     pub language: String,
     #[serde(default = "default_permalink")]
     pub permalink: String,
+    /// IANA time zone name (e.g. "America/Chicago"); empty means the computer's own zone.
+    #[serde(default)]
+    pub timezone: String,
+    /// `timezone`, parsed.
+    #[serde(skip)]
+    pub tz: crate::tz::SiteTz,
     #[serde(default)]
     pub feed: FeedConfig,
     #[serde(default)]
@@ -324,6 +330,11 @@ impl Config {
     pub fn parse(text: &str) -> Result<Config> {
         let mut cfg: Config = toml::from_str(text)?;
         cfg.base_url = cfg.base_url.trim_end_matches('/').to_string();
+        if !cfg.timezone.trim().is_empty() {
+            cfg.tz = crate::tz::SiteTz::parse(&cfg.timezone).with_context(|| {
+                format!("timezone must be an IANA time zone name like \"America/Chicago\" (got {:?})", cfg.timezone)
+            })?;
+        }
         if !(cfg.base_url.starts_with("http://") || cfg.base_url.starts_with("https://")) {
             bail!("base_url must start with http:// or https:// (got {:?})", cfg.base_url);
         }

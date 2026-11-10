@@ -162,6 +162,7 @@ impl Site {
             base_url: cfg.base_url.clone(),
             base_path: base_path.clone(),
             undefined: if opts.strict_undefined { UndefinedBehavior::SemiStrict } else { UndefinedBehavior::Chainable },
+            tz: cfg.tz,
         });
 
         let mut found = content::discover(&content_root, opts.drafts)?;
@@ -180,10 +181,19 @@ impl Site {
             route: String,
         }
         let mut pre = vec![];
+        // Fixture sets are freshly extracted, so neither git nor file times mean anything.
+        let mut file_times =
+            if opts.fixtures.is_some() { content::FileTimes::none() } else { content::FileTimes::new(&content_root) };
         for src in found.sources {
             let slug = content::slug_for(&src);
             let date_key = if src.kind == Kind::Episode { format!("podcast:{slug}") } else { slug.clone() };
-            let date = content::resolve_date(&src, &date_key, &mut state)?;
+            let mut cx = content::DateCtx {
+                tz: cfg.tz,
+                state: &mut state,
+                file_times: &mut file_times,
+                warnings: &mut warnings,
+            };
+            let date = content::resolve_date(&src, &date_key, &mut cx)?;
             let route = if let Some(u) = src.front.get("url").and_then(|v| v.as_str()) {
                 let u = u.trim();
                 if u.starts_with('/') { u.to_string() } else { format!("/{u}") }
@@ -212,6 +222,7 @@ impl Site {
                 route: &cfg.gallery.url,
                 base_path: &base_path,
                 drafts: opts.drafts,
+                tz: cfg.tz,
                 prune_cache: true,
             };
             Some(gallery::load(args, &mut state, &mut warnings)?)
@@ -589,7 +600,7 @@ impl Site {
         }
         let updated = ["updated", "modified", "lastmod"]
             .iter()
-            .find_map(|k| it.src.front.get(*k).and_then(|v| v.as_str()).and_then(content::parse_date))
+            .find_map(|k| it.src.front.get(*k).and_then(|v| v.as_str()).and_then(|s| content::parse_date(s, self.cfg.tz)))
             .map(|d| Value::from(d.to_rfc3339()))
             .unwrap_or_else(none);
         m.insert("updated", updated);

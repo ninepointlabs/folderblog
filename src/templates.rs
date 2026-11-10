@@ -27,6 +27,7 @@ pub struct EnvSettings {
     pub base_url: String,
     pub base_path: String,
     pub undefined: UndefinedBehavior,
+    pub tz: crate::tz::SiteTz,
 }
 
 pub fn make_env(s: EnvSettings) -> Environment<'static> {
@@ -52,7 +53,8 @@ pub fn make_env(s: EnvSettings) -> Environment<'static> {
     env.set_unknown_method_callback(minijinja_contrib::pycompat::unknown_method_callback);
     minijinja_contrib::add_to_environment(&mut env);
     // contrib's `now` returns a time object; ours is a plain RFC 3339 string like every other date.
-    env.add_function("now", |_: &State| -> Value { Value::from(crate::util::now_rfc3339()) });
+    let tz = s.tz;
+    env.add_function("now", move |_: &State| -> Value { Value::from(tz.now().to_rfc3339()) });
 
     let theme_dir = s.theme_dir.clone();
     let pages_dir = s.pages_dir.clone();
@@ -82,7 +84,8 @@ pub fn make_env(s: EnvSettings) -> Environment<'static> {
     let base_path = s.base_path.clone();
     let base_url = s.base_url.clone();
     env.add_filter("absolute_url", move |v: String| -> String { absolute(&base_url, &base_path, &v) });
-    env.add_filter("date", date_filter);
+    let tz = s.tz;
+    env.add_filter("date", move |value: Value, format: Option<String>, kwargs: Kwargs| date_filter(value, format, kwargs, tz));
     env.add_filter("slugify", |v: String| slugify(&v));
     env.add_filter("markdown", |v: String| -> Result<Value, Error> {
         let r = crate::markdown::render(&v, false, None, &|u| u.to_string())
@@ -118,7 +121,7 @@ pub fn absolute(base_url: &str, base_path: &str, v: &str) -> String {
 }
 
 /// `{{ post.date | date("%B %-d, %Y") }}` — strftime formatting of an RFC 3339 or YYYY-MM-DD string.
-fn date_filter(value: Value, format: Option<String>, kwargs: Kwargs) -> Result<String, Error> {
+fn date_filter(value: Value, format: Option<String>, kwargs: Kwargs, tz: crate::tz::SiteTz) -> Result<String, Error> {
     kwargs.assert_all_used()?;
     if value.is_undefined() || value.is_none() {
         return Ok(String::new());
@@ -126,11 +129,11 @@ fn date_filter(value: Value, format: Option<String>, kwargs: Kwargs) -> Result<S
     let s = value.to_string();
     let fmt = format.unwrap_or_else(|| "%Y-%m-%d".into());
     let d = if s == "now" {
-        chrono::Local::now().fixed_offset()
+        tz.now()
     } else {
         DateTime::parse_from_rfc3339(&s)
             .ok()
-            .or_else(|| crate::content::parse_date(&s))
+            .or_else(|| crate::content::parse_date(&s, tz))
             .ok_or_else(|| Error::new(ErrorKind::InvalidOperation, format!("date filter: cannot parse {s:?}")))?
     };
     use std::fmt::Write;

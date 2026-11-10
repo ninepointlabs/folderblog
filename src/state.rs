@@ -8,7 +8,8 @@
 //! keeps a copy too, so an older folderblog sees the same dates.
 
 use anyhow::{Context, Result, bail};
-use chrono::{DateTime, FixedOffset, Local};
+use crate::tz::SiteTz;
+use chrono::{DateTime, FixedOffset};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
@@ -21,6 +22,8 @@ const DATES_HEADER: &str = "\
 # folderblog: the moment each post (or photo) without a date of its own was first
 # published. Undated posts' URLs are made from these dates, so keep this file with your
 # blog, in git and in copies. Changing a date here changes that post's URL.
+# Posts dated by filename or a date-only `date:` take just the time of day from here,
+# which keeps several posts from one day in order.
 ";
 
 #[derive(Debug, Default, Serialize, Deserialize)]
@@ -74,16 +77,26 @@ impl State {
         State::default()
     }
 
-    pub fn first_seen(&mut self, slug: &str) -> DateTime<FixedOffset> {
-        if let Some(d) = self.first_seen.get(slug).and_then(|s| DateTime::parse_from_rfc3339(s).ok()) {
+    pub fn first_seen(&mut self, slug: &str, tz: SiteTz) -> DateTime<FixedOffset> {
+        if let Some(d) = self.recorded(slug) {
             return d;
         }
-        // Whole seconds, so the stored and rendered values are identical.
-        let now = Local::now().fixed_offset();
-        let now = DateTime::parse_from_rfc3339(&now.to_rfc3339_opts(chrono::SecondsFormat::Secs, false)).unwrap();
-        self.first_seen.insert(slug.to_string(), now.to_rfc3339());
-        self.dirty = true;
+        let now = tz.now();
+        self.record(slug, now);
         now
+    }
+
+    /// The date recorded for `slug`, if any.
+    pub fn recorded(&self, slug: &str) -> Option<DateTime<FixedOffset>> {
+        self.first_seen.get(slug).and_then(|s| DateTime::parse_from_rfc3339(s).ok())
+    }
+
+    /// Records `d` for `slug` unless a date is already recorded.
+    pub fn record(&mut self, slug: &str, d: DateTime<FixedOffset>) {
+        if self.recorded(slug).is_none() {
+            self.first_seen.insert(slug.to_string(), d.to_rfc3339());
+            self.dirty = true;
+        }
     }
 
     /// The episode guid for `key`: the one handed out before (older versions picked random
