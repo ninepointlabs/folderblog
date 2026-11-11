@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.2.11
+## 0.2.12
 
 Early Windows test build. Linux paths, the systemd user service, and the Linux packages are unchanged.
 
@@ -10,6 +10,10 @@ Early Windows test build. Linux paths, the systemd user service, and the Linux p
 - Watch events still match after Windows `\\?\` paths are simplified, including when the drive letter's case differs.
 - Command deploys and build hooks say clearly when `sh` is missing, and look for Git for Windows' `sh.exe`. `guide` and `man` still print the text when `less` or `man` is not installed.
 - The release includes an unsigned Windows zip and an unsigned per-user installer, next to the existing Linux artifacts. SmartScreen will warn.
+
+## 0.2.11
+
+Posts are ordered by date and time, so several posts on one day show up in the right order. New `timezone` setting in `blog.toml`. ([#42](https://github.com/ninepointlabs/folderblog/pull/42))
 
 ## 0.2.10
 

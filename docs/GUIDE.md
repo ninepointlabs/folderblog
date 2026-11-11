@@ -50,28 +50,28 @@ asked for your password. That is normal.
 **Arch Linux, Omarchy or Manjaro:**
 
 ```sh
-curl -LO https://github.com/ninepointlabs/folderblog/releases/download/v0.2.11/folderblog-bin-0.2.11-1-x86_64.pkg.tar.zst
-sudo pacman -U folderblog-bin-0.2.11-1-x86_64.pkg.tar.zst
+curl -LO https://github.com/ninepointlabs/folderblog/releases/download/v0.2.12/folderblog-bin-0.2.12-1-x86_64.pkg.tar.zst
+sudo pacman -U folderblog-bin-0.2.12-1-x86_64.pkg.tar.zst
 ```
 
 **Debian, Ubuntu, Pop!_OS or Mint:**
 
 ```sh
-curl -LO https://github.com/ninepointlabs/folderblog/releases/download/v0.2.11/folderblog_0.2.11-1_amd64.deb
-sudo apt install ./folderblog_0.2.11-1_amd64.deb
+curl -LO https://github.com/ninepointlabs/folderblog/releases/download/v0.2.12/folderblog_0.2.12-1_amd64.deb
+sudo apt install ./folderblog_0.2.12-1_amd64.deb
 ```
 
 **Fedora, RHEL or openSUSE:**
 
 ```sh
-sudo dnf install https://github.com/ninepointlabs/folderblog/releases/download/v0.2.11/folderblog-0.2.11-1.x86_64.rpm
+sudo dnf install https://github.com/ninepointlabs/folderblog/releases/download/v0.2.12/folderblog-0.2.12-1.x86_64.rpm
 ```
 
 **Any other Linux:**
 
 ```sh
-curl -L https://github.com/ninepointlabs/folderblog/releases/download/v0.2.11/folderblog-0.2.11-x86_64-linux.tar.gz | tar xz
-sudo install -Dm755 folderblog-0.2.11-x86_64-linux/folderblog /usr/local/bin/folderblog
+curl -L https://github.com/ninepointlabs/folderblog/releases/download/v0.2.12/folderblog-0.2.12-x86_64-linux.tar.gz | tar xz
+sudo install -Dm755 folderblog-0.2.12-x86_64-linux/folderblog /usr/local/bin/folderblog
 ```
 
 Now check that it worked:
@@ -80,9 +80,9 @@ Now check that it worked:
 folderblog --version
 ```
 
-It should say `folderblog 0.2.11`.
+It should say `folderblog 0.2.12`.
 
-These commands always install version 0.2.11, even after newer versions come out. The
+These commands always install version 0.2.12, even after newer versions come out. The
 [releases page](https://github.com/ninepointlabs/folderblog/releases/latest) has the
 newest one: use the same commands with its file names.
 
@@ -103,15 +103,15 @@ Windows support is new and still a test. There is no Mac version.
 1. Install [Git for Windows](https://git-scm.com/download/win). When it asks, choose
    **Git from the command line and also from 3rd-party software**.
 2. On the [releases page](https://github.com/ninepointlabs/folderblog/releases), download
-   `folderblog-0.2.11-x86_64-windows-setup.exe` (an installer) or
-   `folderblog-0.2.11-x86_64-windows.zip` (just the program).
+   `folderblog-0.2.12-x86_64-windows-setup.exe` (an installer) or
+   `folderblog-0.2.12-x86_64-windows.zip` (just the program).
 3. Windows will warn you, because the file is **not signed**. That warning is expected.
    Choose **More info**, then **Run anyway**.
 4. The installer does not need an administrator password. Leave **Add folderblog to my
    PATH** ticked. The "start when I sign in" box is optional: you can tick it, or run
    `folderblog install-service` yourself later.
 5. Open a **new** Command Prompt or PowerShell window (so it sees the new PATH) and type
-   `folderblog --version`. It should say `folderblog 0.2.11`.
+   `folderblog --version`. It should say `folderblog 0.2.12`.
 
 Your blogs live in `C:\Users\You\Blogs` (your user folder, then `Blogs`). The GitHub
 login is saved in `%APPDATA%\folderblog\` (type that into the File Explorer address

@@ -104,33 +104,33 @@ only dependency. Windows is an early test build: a zip and an unsigned installer
 
 **Arch Linux / Omarchy / Manjaro**
 ```sh
-curl -LO https://github.com/ninepointlabs/folderblog/releases/download/v0.2.11/folderblog-bin-0.2.11-1-x86_64.pkg.tar.zst
-sudo pacman -U folderblog-bin-0.2.11-1-x86_64.pkg.tar.zst
+curl -LO https://github.com/ninepointlabs/folderblog/releases/download/v0.2.12/folderblog-bin-0.2.12-1-x86_64.pkg.tar.zst
+sudo pacman -U folderblog-bin-0.2.12-1-x86_64.pkg.tar.zst
 ```
 
 **Debian / Ubuntu / Pop!_OS / Mint**
 ```sh
-curl -LO https://github.com/ninepointlabs/folderblog/releases/download/v0.2.11/folderblog_0.2.11-1_amd64.deb
-sudo apt install ./folderblog_0.2.11-1_amd64.deb
+curl -LO https://github.com/ninepointlabs/folderblog/releases/download/v0.2.12/folderblog_0.2.12-1_amd64.deb
+sudo apt install ./folderblog_0.2.12-1_amd64.deb
 ```
 
 **Fedora / RHEL / openSUSE**
 ```sh
-sudo dnf install https://github.com/ninepointlabs/folderblog/releases/download/v0.2.11/folderblog-0.2.11-1.x86_64.rpm
+sudo dnf install https://github.com/ninepointlabs/folderblog/releases/download/v0.2.12/folderblog-0.2.12-1.x86_64.rpm
 ```
 
 **Any other Linux (tarball)**
 ```sh
-curl -L https://github.com/ninepointlabs/folderblog/releases/download/v0.2.11/folderblog-0.2.11-x86_64-linux.tar.gz | tar xz
-sudo install -Dm755 folderblog-0.2.11-x86_64-linux/folderblog /usr/local/bin/folderblog
+curl -L https://github.com/ninepointlabs/folderblog/releases/download/v0.2.12/folderblog-0.2.12-x86_64-linux.tar.gz | tar xz
+sudo install -Dm755 folderblog-0.2.12-x86_64-linux/folderblog /usr/local/bin/folderblog
 ```
 
 **With [autonomix-cli](https://github.com/ninepointlabs/autonomix-cli)**: `autonomix-cli add https://github.com/ninepointlabs/folderblog`
 
-**From source** (Rust 1.89 or newer): `cargo install --git https://github.com/ninepointlabs/folderblog --tag v0.2.11`
+**From source** (Rust 1.89 or newer): `cargo install --git https://github.com/ninepointlabs/folderblog --tag v0.2.12`
 (without `--tag` you get the newest, unreleased code from `main`).
 
-These links are for folderblog 0.2.11, so they keep working after newer releases come out.
+These links are for folderblog 0.2.12, so they keep working after newer releases come out.
 For the newest version, take the same commands from the
 [latest release](https://github.com/ninepointlabs/folderblog/releases/latest) (the
 version number is in each file name).
@@ -157,12 +157,12 @@ PATH. Command deploys and build hooks also need `sh`; folderblog looks for it on
 and in `C:\Program Files\Git\bin`. If a hook says `sh` is missing, add that `bin` folder
 to PATH.
 
-**Installer** (`folderblog-0.2.11-x86_64-windows-setup.exe` on the release): per user,
+**Installer** (`folderblog-0.2.12-x86_64-windows-setup.exe` on the release): per user,
 no administrator account. It can add `folderblog` to your user PATH, and it can
 optionally register the logon task. The installer is unsigned, so SmartScreen warns
 before it opens.
 
-**Zip** (`folderblog-0.2.11-x86_64-windows.zip`): unpack `folderblog.exe` somewhere on
+**Zip** (`folderblog-0.2.12-x86_64-windows.zip`): unpack `folderblog.exe` somewhere on
 your PATH, or call it by its full path.
 
 Where things live:

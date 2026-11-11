@@ -3,10 +3,10 @@
 ;
 ; Build (from the repo root, after `cargo build --release`):
 ;   ISCC.exe packaging\windows\folderblog.iss
-; Optional: /DMyAppVersion=0.2.11 /DExeSource=...\folderblog.exe /DOutDir=...\dist
+; Optional: /DMyAppVersion=0.2.12 /DExeSource=...\folderblog.exe /DOutDir=...\dist
 
 #ifndef MyAppVersion
-  #define MyAppVersion "0.2.11"
+  #define MyAppVersion "0.2.12"
 #endif
 #ifndef ExeSource
   #define ExeSource "..\..\target\release\folderblog.exe"
