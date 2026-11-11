@@ -9,7 +9,8 @@ use crate::state::State;
 use crate::templates::prefix_base;
 use crate::util::{slugify, strip_tags, title_from_slug};
 use anyhow::{Context, Result, bail};
-use chrono::{DateTime, FixedOffset, Local, NaiveDateTime, TimeZone};
+use crate::tz::SiteTz;
+use chrono::{DateTime, FixedOffset, NaiveDateTime};
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value as Json};
 use sha2::{Digest, Sha256};
@@ -149,19 +150,16 @@ fn is_camera_name(stem: &str) -> bool {
             ))
 }
 
-fn date_in_front(front: &Map<String, Json>, rel: &str) -> Result<Option<DateTime<FixedOffset>>> {
+fn date_in_front(front: &Map<String, Json>, rel: &str, tz: SiteTz) -> Result<Option<DateTime<FixedOffset>>> {
     match front.get("date") {
         None => Ok(None),
-        Some(v) => match v.as_str().and_then(content::parse_date) {
+        Some(v) => match v.as_str().and_then(|s| content::parse_date(s, tz)) {
             Some(d) => Ok(Some(d)),
             None => bail!("{rel}: unrecognised date {v} (use YYYY-MM-DD or RFC 3339)"),
         },
     }
 }
 
-fn local(n: NaiveDateTime) -> Option<DateTime<FixedOffset>> {
-    Local.from_local_datetime(&n).earliest().map(|d| d.fixed_offset())
-}
 
 /// Give each name a unique slug among `taken`, suffixing `-2`, `-3`…
 fn unique(slug: String, taken: &mut HashSet<String>) -> String {
@@ -181,6 +179,7 @@ pub struct LoadArgs<'a> {
     pub route: &'a str,
     pub base_path: &'a str,
     pub drafts: bool,
+    pub tz: SiteTz,
     /// Remove cache entries this load did not use.
     pub prune_cache: bool,
 }
@@ -238,7 +237,7 @@ pub fn load(a: LoadArgs, state: &mut State, warnings: &mut Vec<String>) -> Resul
                 };
                 let front = sc.map(|s| s.front).unwrap_or_default();
                 let source = d.strip_prefix(root).unwrap_or(d).to_string_lossy().replace('\\', "/");
-                let date = date_in_front(&front, &source)?;
+                let date = date_in_front(&front, &source, a.tz)?;
                 let (_, rest) = content::split_date_prefix(&name);
                 let slug_src = front.get("slug").and_then(|v| v.as_str()).map(String::from).unwrap_or_else(|| rest.to_string());
                 let slug = unique(slugify(&slug_src), &mut taken_top);
@@ -338,14 +337,14 @@ pub fn load(a: LoadArgs, state: &mut State, warnings: &mut Vec<String>) -> Resul
         let title = sc_title.filter(|t| !t.is_empty()).unwrap_or_else(|| {
             if is_camera_name(rest) || name_date.is_some() && rest.len() == 10 { String::new() } else { title_from_slug(rest) }
         });
-        let (date, date_source) = if let Some(d) = date_in_front(front, &source)? {
+        let (date, date_source) = if let Some(d) = date_in_front(front, &source, a.tz)? {
             (d, DateSource::FrontMatter)
-        } else if let Some(d) = name_date.and_then(|d| local(d.and_hms_opt(0, 0, 0)?)) {
+        } else if let Some(d) = name_date.and_then(|d| a.tz.localize(&d.and_hms_opt(0, 0, 0)?)) {
             (d, DateSource::Filename)
-        } else if let Some(d) = info.taken.as_deref().and_then(|t| NaiveDateTime::parse_from_str(t, "%Y-%m-%dT%H:%M:%S").ok()).and_then(local) {
+        } else if let Some(d) = info.taken.as_deref().and_then(|t| NaiveDateTime::parse_from_str(t, "%Y-%m-%dT%H:%M:%S").ok()).and_then(|n| a.tz.localize(&n)) {
             (d, DateSource::Exif)
         } else {
-            (state.first_seen(&format!("gallery:{source}")), DateSource::FirstSeen)
+            (state.first_seen(&format!("gallery:{source}"), a.tz), DateSource::FirstSeen)
         };
         let mut tags = content::tags_of(front);
         if let Some(i) = f.album {

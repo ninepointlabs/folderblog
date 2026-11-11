@@ -59,7 +59,7 @@ pub const ITEM_FIELDS: &[Field] = &[
     f("slug", "string", "From the filename (date prefix removed) or bundle folder name; front matter `slug` overrides."),
     f("url", "string", "Site URL of the item, e.g. `/2024/05/hello/`. Use this in links."),
     f("permalink", "string", "Absolute URL, e.g. `https://example.com/2024/05/hello/`."),
-    f("date", "date or none", "RFC 3339 string. Posts always have one; pages only if front matter sets `date`."),
+    f("date", "date or none", "RFC 3339 string with a time of day. Posts always have one; pages only if front matter sets `date`. Posts are sorted by it, newest first."),
     f("date_source", "string or none", "`front_matter`, `filename`, or `first_seen` (when the engine first saw the post)."),
     f("year", "int or none", "Year of `date`."),
     f("month", "int or none", "Month of `date` (1-12)."),
@@ -286,6 +286,7 @@ pub const CONFIG_KEYS: &[Field] = &[
     f("author", "string", "Used by the feed and available to templates."),
     f("language", "string", "Default `en`."),
     f("permalink", "string", "Post URL pattern; tokens `{year}` `{month}` `{day}` `{slug}`. Default `/{year}/{month}/{slug}/`."),
+    f("timezone", "string", "IANA time zone, e.g. `America/Chicago` (default: the computer's own). Dates written without an offset are in this zone."),
     f("feed.limit", "int", "Number of posts in `/feed.xml` (default 20)."),
     f("build.pre", "list of commands", "Shell commands run before a build (working directory: the blog folder)."),
     f("build.post", "list of commands", "Shell commands run after rendering, with `$FOLDERBLOG_OUT` set to the fresh output directory; they may add or change files there."),
@@ -624,7 +625,10 @@ Tests (`x is …`): {tests}.
 ### Functions
 
 {functions}
-Dates are RFC 3339 strings; format them with `| date(...)`. Sort with
+Dates are RFC 3339 strings; format them with `| date(...)`. Post dates include a time of
+day: front matter `date` with a time (`2026-11-10 09:28` is in blog.toml `timezone`), else
+the day from `date` or the filename with the time recorded in `dates.toml` (first git
+commit or file time), so same-day posts keep their order. Sort with
 `posts | sort(attribute="title")`, filter with `posts | selectattr("meta.featured")`,
 group with `posts | groupby("year")`.
 

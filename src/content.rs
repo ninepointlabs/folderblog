@@ -5,7 +5,8 @@
 use crate::state::State;
 use crate::util::{slugify, title_from_slug};
 use anyhow::{Context, Result, bail};
-use chrono::{DateTime, FixedOffset, Local, NaiveDate, NaiveDateTime, TimeZone};
+use crate::tz::SiteTz;
+use chrono::{DateTime, FixedOffset, NaiveDate, NaiveDateTime};
 use serde_json::{Map, Value as Json};
 use std::path::{Path, PathBuf};
 
@@ -285,60 +286,160 @@ pub fn title_fallback(src: &Source) -> String {
     title_from_slug(rest.trim_start_matches('#'))
 }
 
-/// Parse a date value from front matter. Date-only values are midnight local time.
-pub fn parse_date(s: &str) -> Option<DateTime<FixedOffset>> {
+/// Parse a date value from front matter. Values without an offset are in the site's time
+/// zone; date-only values are midnight there.
+pub fn parse_date(s: &str, tz: SiteTz) -> Option<DateTime<FixedOffset>> {
+    parse_date_time(s, tz).map(|(d, _)| d)
+}
+
+/// Like `parse_date`, plus whether the value had a time of day.
+pub fn parse_date_time(s: &str, tz: SiteTz) -> Option<(DateTime<FixedOffset>, bool)> {
     let s = s.trim();
     if let Ok(d) = DateTime::parse_from_rfc3339(s) {
-        return Some(d);
+        return Some((d, true));
     }
     for fmt in ["%Y-%m-%d %H:%M:%S %z", "%Y-%m-%d %H:%M %z", "%Y-%m-%dT%H:%M:%S%z", "%Y-%m-%dT%H:%M%z"] {
         if let Ok(d) = DateTime::parse_from_str(s, fmt) {
-            return Some(d);
+            return Some((d, true));
         }
     }
     for fmt in ["%Y-%m-%d %H:%M:%S", "%Y-%m-%dT%H:%M:%S", "%Y-%m-%d %H:%M", "%Y-%m-%dT%H:%M", "%Y-%m-%dT%H:%M:%S%.f"] {
         if let Ok(n) = NaiveDateTime::parse_from_str(s, fmt) {
-            return local(n);
+            return tz.localize(&n).map(|d| (d, true));
         }
     }
-    NaiveDate::parse_from_str(s, "%Y-%m-%d").ok().and_then(|d| local(d.and_hms_opt(0, 0, 0)?))
+    let d = NaiveDate::parse_from_str(s, "%Y-%m-%d").ok()?;
+    tz.localize(&d.and_hms_opt(0, 0, 0)?).map(|d| (d, false))
 }
 
-fn local(n: NaiveDateTime) -> Option<DateTime<FixedOffset>> {
-    Local.from_local_datetime(&n).earliest().map(|d| d.fixed_offset())
+/// What `resolve_date` needs besides the item: the site's zone, the recorded dates, where
+/// to find a time of day for date-only posts, and where to put warnings.
+pub struct DateCtx<'a> {
+    pub tz: SiteTz,
+    pub state: &'a mut State,
+    pub file_times: &'a mut FileTimes,
+    pub warnings: &'a mut Vec<String>,
 }
 
 /// Date rule: front matter `date`, else filename prefix, else first-seen (recorded in state).
 /// Drafts never record a first-seen date, so a post's date is when it was published.
-pub fn resolve_date(
-    src: &Source,
-    slug: &str,
-    state: &mut State,
-) -> Result<Option<(DateTime<FixedOffset>, DateSource)>> {
+///
+/// A post (or episode) whose date has no time of day gets one, so same-day posts keep a
+/// stable newest-first order: the time recorded for it in `dates.toml`, else the time its
+/// file was first committed to git, else the file's modification time. That time is then
+/// recorded (except for drafts), so it never moves. The day itself always comes from the
+/// front matter or filename, so URLs are unaffected.
+pub fn resolve_date(src: &Source, slug: &str, cx: &mut DateCtx) -> Result<Option<(DateTime<FixedOffset>, DateSource)>> {
+    let tz = cx.tz;
+    let name_date = split_date_prefix(&src.stem).0;
     if let Some(v) = src.front.get("date") {
-        let parsed = match v {
-            Json::String(s) => parse_date(s),
-            _ => None,
-        };
-        // An unreadable date is an error, not a silent fallback: falling back would
-        // give the post a date (and URL) that changes once the typo is fixed.
-        return match parsed {
-            Some(d) => Ok(Some((d, DateSource::FrontMatter))),
-            None => bail!("{}: unrecognised date {v} (use YYYY-MM-DD or RFC 3339)", src.rel.display()),
-        };
+        match v.as_str().and_then(|s| parse_date_time(s, tz)) {
+            Some((d, true)) => return Ok(Some((d, DateSource::FrontMatter))),
+            Some((d, false)) => return Ok(Some((with_time(src, slug, d.date_naive(), cx), DateSource::FrontMatter))),
+            // With a filename date to fall back on, a typo is a warning: the post keeps the
+            // filename's date (and URL). Without one it stays an error, since the fallback
+            // (first seen) would record a permanent date, and URL, made from the typo.
+            None if name_date.is_some() => cx.warnings.push(format!(
+                "{}: unrecognised date {v} (use YYYY-MM-DD, YYYY-MM-DD HH:MM or RFC 3339); using the filename's date",
+                src.rel.display()
+            )),
+            None => bail!(
+                "{}: unrecognised date {v} (use YYYY-MM-DD, YYYY-MM-DD HH:MM or RFC 3339)",
+                src.rel.display()
+            ),
+        }
     }
-    if let (Some(d), _) = split_date_prefix(&src.stem) {
-        return Ok(local(d.and_hms_opt(0, 0, 0).unwrap()).map(|d| (d, DateSource::Filename)));
+    if let Some(d) = name_date {
+        return Ok(Some((with_time(src, slug, d, cx), DateSource::Filename)));
     }
     if src.kind == Kind::Page {
         return Ok(None);
     }
     if src.draft {
-        let now = Local::now().fixed_offset();
-        let now = DateTime::parse_from_rfc3339(&now.to_rfc3339_opts(chrono::SecondsFormat::Secs, false)).unwrap();
-        return Ok(Some((now, DateSource::FirstSeen)));
+        return Ok(Some((tz.now(), DateSource::FirstSeen)));
     }
-    Ok(Some((state.first_seen(slug), DateSource::FirstSeen)))
+    Ok(Some((cx.state.first_seen(slug, tz), DateSource::FirstSeen)))
+}
+
+/// `day` at the post's time of day (see `resolve_date`). Pages stay at midnight.
+fn with_time(src: &Source, slug: &str, day: NaiveDate, cx: &mut DateCtx) -> DateTime<FixedOffset> {
+    let tz = cx.tz;
+    let midnight = || tz.localize(&day.and_hms_opt(0, 0, 0).unwrap()).unwrap();
+    if src.kind == Kind::Page {
+        return midnight();
+    }
+    let seed = match cx.state.recorded(slug) {
+        Some(d) => d,
+        None => match cx.file_times.time_of(&src.abs) {
+            Some(d) => d,
+            None => return midnight(),
+        },
+    };
+    let d = tz.localize(&day.and_time(tz.convert(&seed).time())).unwrap_or_else(midnight);
+    if !src.draft {
+        cx.state.record(slug, d);
+    }
+    d
+}
+
+fn mtime(p: &Path) -> Option<DateTime<FixedOffset>> {
+    let t: DateTime<chrono::Utc> = std::fs::metadata(p).ok()?.modified().ok()?.into();
+    DateTime::from_timestamp(t.timestamp(), 0).map(|d| d.fixed_offset())
+}
+
+/// A time for a content file: when it was first committed to git (author time), else its
+/// modification time. `git log` runs once, on first use, and only finds files when the
+/// folder is in a git checkout.
+pub struct FileTimes {
+    dir: Option<PathBuf>,
+    git: Option<std::collections::HashMap<PathBuf, DateTime<FixedOffset>>>,
+}
+
+impl FileTimes {
+    pub fn new(dir: &Path) -> FileTimes {
+        FileTimes { dir: Some(dir.to_path_buf()), git: None }
+    }
+
+    /// Knows no times (date-only posts stay at midnight).
+    pub fn none() -> FileTimes {
+        FileTimes { dir: None, git: None }
+    }
+
+    pub fn time_of(&mut self, abs: &Path) -> Option<DateTime<FixedOffset>> {
+        let dir = self.dir.as_ref()?;
+        self.git.get_or_insert_with(|| git_first_added(dir)).get(abs).copied().or_else(|| mtime(abs))
+    }
+}
+
+fn git_first_added(dir: &Path) -> std::collections::HashMap<PathBuf, DateTime<FixedOffset>> {
+    let mut map = std::collections::HashMap::new();
+    let git = |args: &[&str]| -> Option<String> {
+        let out = std::process::Command::new("git")
+            .arg("-C")
+            .arg(dir)
+            .args(args)
+            .stdin(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .output()
+            .ok()?;
+        out.status.success().then(|| String::from_utf8_lossy(&out.stdout).into_owned())
+    };
+    let Some(top) = git(&["rev-parse", "--show-toplevel"]) else { return map };
+    let top = PathBuf::from(top.trim_end_matches(['\r', '\n']));
+    let Some(log) = git(&["-c", "core.quotePath=false", "log", "--no-renames", "--diff-filter=A", "--format=%x01%aI", "--name-only", "--", "."])
+    else {
+        return map;
+    };
+    // Newest commit first, so the last date seen for a path is when it was first added.
+    let mut when = None;
+    for line in log.lines() {
+        if let Some(d) = line.strip_prefix('\u{1}') {
+            when = DateTime::parse_from_rfc3339(d.trim()).ok();
+        } else if let (Some(d), false) = (when, line.is_empty()) {
+            map.insert(top.join(line), d);
+        }
+    }
+    map
 }
 
 pub fn tags_of(front: &Map<String, Json>) -> Vec<String> {

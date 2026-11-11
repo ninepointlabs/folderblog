@@ -42,7 +42,8 @@ without touching the engine.
 - Plain Markdown files. Front matter is optional: the title comes from the first heading
   (or the filename), the date from the filename (`2026-09-30-my-post.md`) or from the
   moment folderblog first saw the file, and it never changes after that (that moment is
-  kept in `dates.toml`, so it survives git clones and copies).
+  kept in `dates.toml`, so it survives git clones and copies). Several posts on one day
+  stay in the order they were written (see **Date** below).
 - Folder posts: put `index.md` and its images in `posts/my-trip/` and relative image
   paths just work.
 - Pages (`pages/about.md` → `/about/`), drafts that only appear in preview, a `static/`
@@ -410,6 +411,20 @@ Every few years I try to go fully digital…
   and never moves, even if you edit the post or your sync tool touches it. Keep
   `dates.toml` with the blog (it isn't ignored by git) so a clone or copy gives undated
   posts the same addresses.
+- **Time of day:** every listing (home page, archives, tag pages, feeds, sitemap) is
+  newest first by date *and* time. To set the time yourself, write it in `date`:
+  `date: 2026-11-10T09:28:00-06:00`, or `date: 2026-11-10 09:28` for the site's time zone
+  (`timezone` in `blog.toml`, default: your computer's). A post whose date has no time
+  (a filename date, or `date: 2026-11-10`) gets one so same-day posts keep a stable order:
+  the time the file was first committed to git, else the file's modification time. That
+  time is recorded in `dates.toml` the first time folderblog publishes the post, so later
+  edits never reshuffle the day. Only the time comes from there: the day, and so the
+  address, still comes from the filename or `date`. Feeds carry the full time; theme pages
+  show whatever their `date(...)` format asks for (the default theme shows the day).
+- **Typos:** an unreadable `date` is a warning when the filename has a date to fall back on
+  (`folderblog check` lists it), and an error otherwise, since folderblog would otherwise
+  record a permanent date (and address) made from the typo. An unreadable `updated` is a
+  warning and is left out.
 - **Excerpt:** everything before a `<!--more-->` line, else the first paragraph.
 
 **Optional front matter** (YAML between `---` or TOML between `+++`):
@@ -698,6 +713,7 @@ description = "Notes from the workbench"
 author = "Your Name"
 language = "en"
 permalink = "/{year}/{month}/{slug}/"            # tokens: {year} {month} {day} {slug}
+# timezone = "America/Chicago"                   # for dates written without an offset (default: this computer's)
 # image = "/img/share.png"                       # default share image (default: static/og-default.png)
 
 [feed]

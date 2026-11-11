@@ -95,6 +95,143 @@ fn date_rules_front_matter_then_filename_then_first_seen() {
     assert_eq!(post(&s, "nodate").date.unwrap().1, crate::content::DateSource::FirstSeen);
 }
 
+fn set_mtime(b: &Blog, rel: &str, rfc3339: &str) {
+    let t: std::time::SystemTime = chrono::DateTime::parse_from_rfc3339(rfc3339).unwrap().into();
+    fs::File::options().write(true).open(b.dir.join(rel)).unwrap().set_modified(t).unwrap();
+}
+
+fn order(site: &Site) -> Vec<&str> {
+    site.posts.iter().map(|p| p.slug.as_str()).collect()
+}
+
+#[test]
+fn same_day_posts_order_by_time_newest_first() {
+    let b = Blog::new("timezone = \"America/Chicago\"");
+    // Alphabetical order would be alpha, beta, zulu.
+    b.write("posts/2026-11-10-alpha.md", "---\ndate: 2026-11-10T15:00:00-06:00\n---\nx");
+    b.write("posts/2026-11-10-beta.md", "---\ndate: 2026-11-10 09:28\n---\nx");
+    b.write("posts/2026-11-10-zulu.md", "x");
+    set_mtime(&b, "posts/2026-11-10-zulu.md", "2026-11-10T12:00:00-06:00");
+    b.write("posts/2026-11-09-older.md", "x");
+    set_mtime(&b, "posts/2026-11-09-older.md", "2026-11-12T23:59:00-06:00");
+    let s = b.site();
+    assert_eq!(order(&s), ["alpha", "zulu", "beta", "older"]);
+    // A time without an offset is in the site's zone; filename posts keep their day.
+    assert_eq!(post(&s, "beta").date.unwrap().0.to_rfc3339(), "2026-11-10T09:28:00-06:00");
+    assert_eq!(post(&s, "zulu").date.unwrap().0.to_rfc3339(), "2026-11-10T12:00:00-06:00");
+    assert_eq!(post(&s, "zulu").date.unwrap().1, crate::content::DateSource::Filename);
+    assert_eq!(post(&s, "older").date.unwrap().0.to_rfc3339(), "2026-11-09T23:59:00-06:00");
+    assert!(post(&s, "older").route.contains("/2026/11/"));
+    // Feeds carry the real time.
+    b.build().unwrap();
+    let feed = b.read_out("feed.xml");
+    assert!(feed.contains("<pubDate>Tue, 10 Nov 2026 12:00:00 -0600</pubDate>"), "{feed}");
+    let alpha = feed.find("alpha").unwrap();
+    let zulu = feed.find("zulu").unwrap();
+    let beta = feed.find("beta").unwrap();
+    assert!(alpha < zulu && zulu < beta, "feed order");
+    // The time is recorded, so editing the file (new mtime) never reshuffles the day.
+    assert!(fs::read_to_string(b.dir.join("dates.toml")).unwrap().contains("zulu = \"2026-11-10T12:00:00-06:00\""));
+    b.write("posts/2026-11-10-zulu.md", "edited");
+    let s = b.site();
+    assert_eq!(order(&s), ["alpha", "zulu", "beta", "older"]);
+    assert_eq!(post(&s, "zulu").date.unwrap().0.to_rfc3339(), "2026-11-10T12:00:00-06:00");
+}
+
+#[test]
+fn date_only_front_matter_gets_a_time_too() {
+    let b = Blog::new("timezone = \"America/Chicago\"");
+    b.write("posts/a.md", "---\ndate: 2026-11-10\n---\nx");
+    b.write("posts/b.md", "---\ndate: 2026-11-10\n---\nx");
+    set_mtime(&b, "posts/a.md", "2026-11-10T08:00:00-06:00");
+    set_mtime(&b, "posts/b.md", "2026-11-10T10:00:00-06:00");
+    let s = b.site();
+    assert_eq!(order(&s), ["b", "a"]);
+    assert_eq!(post(&s, "a").date.unwrap().0.to_rfc3339(), "2026-11-10T08:00:00-06:00");
+    assert_eq!(post(&s, "a").date.unwrap().1, crate::content::DateSource::FrontMatter);
+}
+
+#[test]
+fn same_day_time_comes_from_first_git_commit_before_mtime() {
+    let b = Blog::new("timezone = \"America/Chicago\"");
+    let git = |args: &[&str], date: &str| {
+        let ok = std::process::Command::new("git")
+            .current_dir(&b.dir)
+            .args(["-c", "user.name=t", "-c", "user.email=t@example.com", "-c", "commit.gpgsign=false"])
+            .args(args)
+            .env("GIT_AUTHOR_DATE", date)
+            .env("GIT_COMMITTER_DATE", date)
+            .output()
+            .map(|o| o.status.success())
+            .unwrap_or(false);
+        assert!(ok, "git {args:?}");
+    };
+    if std::process::Command::new("git").arg("--version").output().is_err() {
+        return;
+    }
+    git(&["init", "-q"], "2026-11-10T00:00:00-06:00");
+    b.write("posts/2026-11-10-first.md", "x");
+    git(&["add", "posts"], "2026-11-10T00:00:00-06:00");
+    git(&["commit", "-qm", "first"], "2026-11-10T07:15:00-06:00");
+    b.write("posts/2026-11-10-second.md", "x");
+    git(&["add", "posts"], "2026-11-10T00:00:00-06:00");
+    git(&["commit", "-qm", "second"], "2026-11-10T08:45:00-06:00");
+    // A later commit touching the first post doesn't change when it was added.
+    b.write("posts/2026-11-10-first.md", "edited");
+    git(&["commit", "-qam", "edit"], "2026-11-10T20:00:00-06:00");
+    // mtimes say otherwise; git wins.
+    set_mtime(&b, "posts/2026-11-10-first.md", "2026-11-10T23:00:00-06:00");
+    set_mtime(&b, "posts/2026-11-10-second.md", "2026-11-10T01:00:00-06:00");
+    // Not yet committed: mtime.
+    b.write("posts/2026-11-10-third.md", "x");
+    set_mtime(&b, "posts/2026-11-10-third.md", "2026-11-10T09:30:00-06:00");
+    let s = b.site();
+    assert_eq!(order(&s), ["third", "second", "first"]);
+    assert_eq!(post(&s, "first").date.unwrap().0.to_rfc3339(), "2026-11-10T07:15:00-06:00");
+    assert_eq!(post(&s, "second").date.unwrap().0.to_rfc3339(), "2026-11-10T08:45:00-06:00");
+}
+
+#[test]
+fn recorded_times_win_and_drafts_record_nothing() {
+    let b = Blog::new("timezone = \"America/Chicago\"");
+    // A post that was undated before (or a time recorded by an earlier build) keeps that time.
+    b.write("dates.toml", "kept = \"2026-10-01T16:30:00+00:00\"\n");
+    b.write("posts/2026-11-10-kept.md", "x");
+    b.write("drafts/2026-11-10-draft.md", "x");
+    let s = Site::load(&b.dir, LoadOptions { persist_state: true, drafts: true, ..Default::default() }).unwrap();
+    // 16:30 UTC is 11:30 in Chicago (CDT on Oct 1 is -05:00, but the day is Nov 10, CST).
+    assert_eq!(post(&s, "kept").date.unwrap().0.to_rfc3339(), "2026-11-10T11:30:00-06:00");
+    let dates = fs::read_to_string(b.dir.join("dates.toml")).unwrap();
+    assert!(!dates.contains("draft"), "{dates}");
+}
+
+#[test]
+fn timezone_setting_is_validated_and_used() {
+    let b = Blog::new("timezone = \"Mars/Olympus\"");
+    b.write("posts/x.md", "x");
+    assert!(format!("{:#}", b.build().unwrap_err()).contains("timezone must be an IANA time zone"));
+    let b = Blog::new("timezone = \"Asia/Tokyo\"");
+    b.write("posts/x.md", "---\ndate: 2026-07-01 08:00\n---\nx");
+    assert_eq!(post(&b.site(), "x").date.unwrap().0.to_rfc3339(), "2026-07-01T08:00:00+09:00");
+}
+
+#[test]
+fn malformed_date_with_a_filename_date_is_a_warning() {
+    let b = Blog::new("timezone = \"America/Chicago\"");
+    b.write("posts/2026-11-10-typo.md", "---\ndate: 2026-11-31 09:00\nupdated: someday\n---\nx");
+    let rep = crate::check::check(&b.dir, None).unwrap();
+    assert!(rep.errors.is_empty(), "{:?}", rep.errors);
+    assert!(rep.warnings.iter().any(|w| w.contains("typo.md: unrecognised date") && w.contains("filename")), "{:?}", rep.warnings);
+    assert!(rep.warnings.iter().any(|w| w.contains("unrecognised updated")), "{:?}", rep.warnings);
+    let s = b.site();
+    assert!(post(&s, "typo").date.unwrap().0.to_rfc3339().starts_with("2026-11-10T"));
+    assert_eq!(post(&s, "typo").date.unwrap().1, crate::content::DateSource::Filename);
+    // Without a filename date there is nothing safe to fall back on: still an error.
+    b.write("posts/nodate.md", "---\ndate: tomorrow\n---\nx");
+    let rep = crate::check::check(&b.dir, None).unwrap();
+    assert!(rep.errors.iter().any(|e| e.contains("nodate.md: unrecognised date")), "{:?}", rep.errors);
+}
+
 #[test]
 fn first_seen_date_is_stable_across_builds_and_edits() {
     let b = Blog::new("");
@@ -641,6 +778,7 @@ fn every_documented_config_key_parses() {
             Some(("deploy", key)) => deploy_keys.push((key, k)),
             Some((t, key)) => tables.entry(t).or_default().push(format!("{key} = {}", value(k))),
             None if ["title", "base_url", "params"].contains(&k.name) => {}
+            None if k.name == "timezone" => toml.push_str("timezone = 'America/Chicago'\n"),
             None => toml.push_str(&format!("{} = '/{{slug}}/'\n", k.name)),
         }
     }
