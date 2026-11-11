@@ -1,0 +1,127 @@
+# Tests on every pull request. A version tag (or a published GitHub release) also
+# builds the Linux packages and the unsigned Windows zip and installer, then attaches
+# them to the release. Pushing the tag is what publishes; this file does not run a
+# release on ordinary pushes to main.
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  release:
+    types: [published]
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  FOLDERBLOG_NO_NOTIFY: "1"
+
+jobs:
+  test:
+    name: test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Do not rewrite test files on Windows
+        if: runner.os == 'Windows'
+        run: git config --global core.autocrlf false
+      - name: Test
+        run: cargo test --locked
+
+  windows-package:
+    name: windows zip and installer
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Build
+        run: cargo build --release --locked
+      - name: Zip and installer
+        shell: pwsh
+        run: |
+          $version = (Select-String -Path Cargo.toml -Pattern '^version = "([^"]+)"' | Select-Object -First 1).Matches.Groups[1].Value
+          New-Item -ItemType Directory -Force -Path dist | Out-Null
+          $zip = "dist/folderblog-$version-x86_64-windows.zip"
+          Compress-Archive -Path target/release/folderblog.exe -DestinationPath $zip
+          $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+          if (-not (Test-Path $iscc)) {
+            choco install innosetup --no-progress -y --limit-output
+          }
+          if (-not (Test-Path $iscc)) {
+            throw "Inno Setup compiler not found at $iscc"
+          }
+          & $iscc "/DMyAppVersion=$version" "/DExeSource=$PWD\target\release\folderblog.exe" "/DOutDir=$PWD\dist" packaging\windows\folderblog.iss
+          if (-not (Test-Path "dist/folderblog-$version-x86_64-windows-setup.exe")) {
+            throw "installer was not written"
+          }
+          Get-ChildItem dist | Format-Table Name, Length
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-dist
+          path: dist/*
+          if-no-files-found: error
+
+  linux-package:
+    name: linux packages
+    if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'release'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-unknown-linux-musl
+      - name: Packaging tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang
+          cargo install cargo-deb cargo-generate-rpm
+      - name: Build release artifacts
+        run: packaging/build-release.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux-dist
+          path: dist/*
+          if-no-files-found: error
+
+  publish:
+    name: publish release
+    if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'release'
+    needs: [test, windows-package, linux-package]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: "*-dist"
+          merge-multiple: true
+          path: release
+      - name: Checksums
+        run: |
+          rm -f release/SHA256SUMS
+          (cd release && sha256sum -- * > SHA256SUMS)
+          echo "Release files:"
+          cat release/SHA256SUMS
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: release/*
+          fail_on_unmatched_files: true
+          body: |
+            Early Windows test build of folderblog, alongside the Linux packages.
+
+            The Windows zip and the `.exe` installer are **not signed**. Windows SmartScreen will warn; choose More info, then Run anyway.
+
+            The installer is per user (no administrator account). It can add `folderblog` to PATH and, if you tick the box, register the sign-in task. See the README section "Windows (early test build)".
+
+            On Linux you can also install with [autonomix-cli](https://github.com/ninepointlabs/autonomix-cli): `autonomix-cli add https://github.com/ninepointlabs/folderblog`
+          generate_release_notes: false

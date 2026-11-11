@@ -50,6 +50,11 @@ pub struct Plan {
     pub errors: Vec<String>,
 }
 
+/// Content paths in messages and checks use `/`, on Windows too.
+fn shown(path: &Path) -> String {
+    path.to_string_lossy().replace('\\', "/")
+}
+
 /// URL for an output file: `a/index.html` is served as `/a/`.
 pub fn file_url(path: &str) -> String {
     let p = path.trim_start_matches('/');
@@ -113,7 +118,7 @@ impl Site {
             if !template.starts_with('@') && !self.theme_dir.join(&template).is_file() {
                 errors.push(format!(
                     "{}: layout {:?} not found (expected theme/{template})",
-                    it.src.rel.display(),
+                    shown(&it.src.rel),
                     self.layout_of(it)
                 ));
                 continue;
@@ -131,7 +136,7 @@ impl Site {
             outputs.push(Output {
                 path: url_to_file(&it.route),
                 url: prefix_base(&self.base_path, &it.route),
-                origin: format!("{} (via {})", it.src.rel.display(), template_file(&template)),
+                origin: format!("{} (via {})", shown(&it.src.rel), template_file(&template)),
                 content: Content::Render { template, ctx },
                 lastmod,
             });
@@ -139,7 +144,7 @@ impl Site {
                 outputs.push(Output {
                     path: out.trim_start_matches('/').to_string(),
                     url: prefix_base(&self.base_path, out),
-                    origin: abs.strip_prefix(&self.content_root).unwrap_or(abs).display().to_string(),
+                    origin: shown(abs.strip_prefix(&self.content_root).unwrap_or(abs)),
                     content: Content::Copy(abs.clone()),
                     lastmod: None,
                 });
@@ -149,7 +154,7 @@ impl Site {
             outputs.push(Output {
                 path: out.trim_start_matches('/').to_string(),
                 url: prefix_base(&self.base_path, out),
-                origin: abs.strip_prefix(&self.content_root).unwrap_or(abs).display().to_string(),
+                origin: shown(abs.strip_prefix(&self.content_root).unwrap_or(abs)),
                 content: Content::Copy(abs.clone()),
                 lastmod: None,
             });
@@ -326,7 +331,7 @@ impl Site {
             outputs.push(Output {
                 path: url_to_file(&it.route),
                 url: prefix_base(&self.base_path, &it.route),
-                origin: format!("{} (via theme/_podcast/episode.html)", it.src.rel.display()),
+                origin: format!("{} (via theme/_podcast/episode.html)", shown(&it.src.rel)),
                 content: Content::Render { template: "_podcast/episode.html".into(), ctx },
                 lastmod: it.date.as_ref().map(|d| d.0.to_rfc3339()),
             });
@@ -334,7 +339,7 @@ impl Site {
                 outputs.push(Output {
                     path: out.trim_start_matches('/').to_string(),
                     url: prefix_base(&self.base_path, out),
-                    origin: abs.strip_prefix(&self.content_root).unwrap_or(abs).display().to_string(),
+                    origin: shown(abs.strip_prefix(&self.content_root).unwrap_or(abs)),
                     content: Content::Copy(abs.clone()),
                     lastmod: None,
                 });
