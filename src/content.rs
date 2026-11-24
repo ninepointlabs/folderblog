@@ -424,9 +424,10 @@ fn git_first_added(dir: &Path) -> std::collections::HashMap<PathBuf, DateTime<Fi
             .ok()?;
         out.status.success().then(|| String::from_utf8_lossy(&out.stdout).into_owned())
     };
-    let Some(top) = git(&["rev-parse", "--show-toplevel"]) else { return map };
-    let top = PathBuf::from(top.trim_end_matches(['\r', '\n']));
-    let Some(log) = git(&["-c", "core.quotePath=false", "log", "--no-renames", "--diff-filter=A", "--format=%x01%aI", "--name-only", "--", "."])
+    // `--relative` prints paths relative to `dir`, so keys are built from the same `dir` the
+    // caller walked. Joining onto `git rev-parse --show-toplevel` instead never matched on
+    // Windows: the blog dir is canonicalized to `\\?\C:\...` while git prints `C:/...`.
+    let Some(log) = git(&["-c", "core.quotePath=false", "log", "--no-renames", "--diff-filter=A", "--relative", "--format=%x01%aI", "--name-only", "--", "."])
     else {
         return map;
     };
@@ -436,7 +437,7 @@ fn git_first_added(dir: &Path) -> std::collections::HashMap<PathBuf, DateTime<Fi
         if let Some(d) = line.strip_prefix('\u{1}') {
             when = DateTime::parse_from_rfc3339(d.trim()).ok();
         } else if let (Some(d), false) = (when, line.is_empty()) {
-            map.insert(top.join(line), d);
+            map.insert(dir.join(line), d);
         }
     }
     map

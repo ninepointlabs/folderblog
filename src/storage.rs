@@ -633,6 +633,7 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         let c = Credentials { access_key_id: "AKID1234WXYZ".into(), secret_access_key: "canary-secret".into() };
         let p = save_credentials(tmp.path(), "show-podcast", &c).unwrap();
+        assert!(p.is_file(), "{}", p.display());
         #[cfg(unix)]
         {
             use std::os::unix::fs::PermissionsExt;

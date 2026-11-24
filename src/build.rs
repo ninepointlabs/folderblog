@@ -6,7 +6,6 @@ use crate::state::STATE_DIR;
 use crate::status::{self, BuildStatus};
 use anyhow::{Context, Result, bail};
 use std::path::{Path, PathBuf};
-use std::process::Command;
 use std::time::Instant;
 
 pub struct BuildResult {
@@ -21,14 +20,7 @@ pub fn public_dir(blog_dir: &Path) -> PathBuf {
 
 pub fn run_hooks(blog_dir: &Path, hooks: &[String], out: &Path, phase: &str) -> Result<()> {
     for cmd in hooks {
-        let output = Command::new("sh")
-            .arg("-c")
-            .arg(cmd)
-            .current_dir(blog_dir)
-            .env("FOLDERBLOG_BLOG", blog_dir)
-            .env("FOLDERBLOG_OUT", out)
-            .output()
-            .with_context(|| format!("starting {phase} hook {cmd:?}"))?;
+        let output = crate::shell::run(blog_dir, cmd, blog_dir, out).with_context(|| format!("starting {phase} hook {cmd:?}"))?;
         if !output.status.success() {
             let tail = tail(&String::from_utf8_lossy(&output.stderr), 20);
             bail!("{phase} hook {cmd:?} failed ({}):\n{tail}", output.status);

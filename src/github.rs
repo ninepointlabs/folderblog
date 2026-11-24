@@ -36,13 +36,7 @@ pub fn client_id(flag: Option<&str>) -> Result<String> {
 }
 
 pub fn config_dir() -> PathBuf {
-    if let Some(d) = std::env::var_os("FOLDERBLOG_CONFIG_DIR") {
-        return PathBuf::from(d);
-    }
-    let base = std::env::var_os("XDG_CONFIG_HOME")
-        .map(PathBuf::from)
-        .unwrap_or_else(|| PathBuf::from(std::env::var_os("HOME").unwrap_or_default()).join(".config"));
-    base.join("folderblog")
+    crate::paths::config_dir()
 }
 
 fn token_path() -> PathBuf {
